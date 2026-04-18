@@ -1,0 +1,62 @@
+# ==========================================
+# 1. Byte-compiled / Optimized / DLL files
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ==========================================
+# 2. Môi trường ảo (Virtual Environments)
+# ==========================================
+venv/
+.venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==========================================
+# 3. Thông tin bảo mật & Biến môi trường
+# ==========================================
+# Tuyệt đối không push file chứa API Key (OpenAI, HuggingFace...) lên GitHub
+.env
+.env.local
+.env.*
+*.pem
+secrets/
+
+# ==========================================
+# 4. Logs và Caches
+# ==========================================
+*.log
+logs/
+.cache/
+.pytest_cache/
+
+# ==========================================
+# 5. Dữ liệu AI, Models và Vector Database
+# ==========================================
+# Tránh push các file data lớn hoặc index vector
+*.faiss
+*.index
+models/
+data/
+datasets/
+huggingface/
+.huggingface/
+vector_store/
+
+# ==========================================
+# 6. Jupyter Notebook & Colab
+# ==========================================
+.ipynb_checkpoints/
+
+# ==========================================
+# 7. Cấu hình IDEs và Hệ điều hành
+# ==========================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
