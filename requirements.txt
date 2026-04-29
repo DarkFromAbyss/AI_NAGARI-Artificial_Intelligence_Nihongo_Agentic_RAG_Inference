@@ -19,3 +19,11 @@ langchain-classic
 langchain-community
 langchain-huggingface
 langchain-text-splitters
+
+gdown
+tqdm
+PyYAML
+huggingface_hub
+
+pandas
+numpy
