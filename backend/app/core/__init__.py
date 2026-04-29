@@ -1,0 +1,1 @@
+"""Core backend package for configuration and shared utilities."""
