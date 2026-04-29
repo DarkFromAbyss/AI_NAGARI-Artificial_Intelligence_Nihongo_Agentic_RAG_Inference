@@ -1,130 +1,144 @@
-import os
-import gdown
-import zipfile
-
-import logging
-from tqdm import tqdm
-from urllib.parse import urlparse
-
 import argparse
+import logging
+import os
+from pathlib import Path
+from typing import List
+
+import gdown
 import yaml
+from pydantic import BaseModel, Field, ValidationError, validator
+from tqdm import tqdm
 
-def download_and_extract_data(gdrive_url: str, target_dir: str):
-    """
-    Downloads data from a shared Google Drive URL (file or folder) and saves it to the specified target directory.
-    Automatically extracts .zip files and deletes the original archive.
-    Creates necessary subdirectories if they do not exist.
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
 
-    Args:
-        gdrive_url (str): The shared Google Drive URL (file or folder link).
-        target_dir (str): The target directory path to save the data.
+class DownloadConfig(BaseModel):
+    """Schema for validating CLI arguments for folder download."""
 
-    Raises:
-        Exception: If download fails due to invalid URL, connection issues, or other errors.
-    """
-    # Ensure the target directory exists
-    os.makedirs(target_dir, exist_ok=True)
+    url: str = Field(..., description="Google Drive folder URL")
+    target_dir: Path = Field(..., description="Destination directory for downloaded data")
 
-    # Define subdirectories to create
-    subdirs = ['vector_store', 'raw_datasets', 'processed_datasets']
-    for sub in subdirs:
-        os.makedirs(os.path.join(target_dir, sub), exist_ok=True)
+    @validator("url")
+    def validate_drive_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if "drive.google.com" not in normalized or "/folders/" not in normalized:
+            raise ValueError("URL must be a Google Drive folder link containing '/folders/'.")
+        return normalized
 
-    try:
-        # Check if the URL is a folder link (contains '/folders/')
-        parsed_url = urlparse(gdrive_url)
-        if 'folders' in parsed_url.path:
-            # Download the entire folder with progress
-            downloaded_files = gdown.download_folder(gdrive_url, output=target_dir, quiet=False)  # quiet=False to show progress
-            print("Downloaded files:")
-            for file in downloaded_files:
-                print(f"  - {os.path.basename(file)}")
-        else:
-            # Download the single file with progress
-            downloaded_file = gdown.download(gdrive_url, output=target_dir, quiet=False, fuzzy=True)  # quiet=False for progress
-
-            if downloaded_file and os.path.isfile(downloaded_file):
-                print(f"Downloaded: {os.path.basename(downloaded_file)}")
-                # Check if the downloaded file is a .zip archive
-                if downloaded_file.lower().endswith('.zip'):
-                    # Extract the zip file into the target directory with progress
-                    with zipfile.ZipFile(downloaded_file, 'r') as zip_ref:
-                        file_list = zip_ref.namelist()
-                        with tqdm(total=len(file_list), desc="Extracting", unit="file") as pbar:
-                            for file in file_list:
-                                zip_ref.extract(file, target_dir)
-                                pbar.update(1)
-                    # Delete the original zip file after extraction
-                    os.remove(downloaded_file)
-                    print(f"Extracted and removed: {os.path.basename(downloaded_file)}")
-
-        print("Download and extraction completed successfully.")
-
-    except Exception as e:
-        print(f"Error during download: {e}")
-        raise
-
-def print_directory_tree(root_dir: str):
-    """
-    Scans the specified directory and prints a visual directory tree to the console,
-    similar to the 'tree' command in Linux.
-
-    Args:
-        root_dir (str): The root directory to scan and print.
-    """
-    def _print_tree(dir_path: str, prefix: str = ""):
+    @validator("target_dir", pre=True)
+    def validate_target_dir(cls, value: str) -> Path:
+        path = Path(value).expanduser().resolve()
+        if path.exists() and not path.is_dir():
+            raise ValueError(f"Target path exists and is not a directory: {path}")
         try:
-            items = sorted(os.listdir(dir_path))
-        except PermissionError:
-            return
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise ValueError(f"Cannot create target directory: {error}") from error
+        if not os.access(path, os.W_OK):
+            raise ValueError(f"Target directory is not writable: {path}")
+        return path
 
-        for i, item in enumerate(items):
-            path = os.path.join(dir_path, item)
-            is_last = i == len(items) - 1
+
+def parse_arguments() -> DownloadConfig:
+    """Parse CLI arguments and return validated configuration."""
+    parser = argparse.ArgumentParser(
+        description="Download a Google Drive folder to a local directory and update config.yaml."
+    )
+    parser.add_argument(
+        "--url",
+        "-u",
+        required=True,
+        help="Google Drive folder link to download.",
+    )
+    parser.add_argument(
+        "--file",
+        "-f",
+        required=True,
+        help="Destination directory for downloaded data.",
+    )
+    args = parser.parse_args()
+    try:
+        return DownloadConfig(url=args.url, target_dir=args.file)
+    except ValidationError as error:
+        logger.error("CLI validation failed: %s", error)
+        raise SystemExit(1)
+
+
+def download_drive_folder(url: str, target_dir: Path) -> List[Path]:
+    """Download the entire Google Drive folder to the destination directory."""
+    logger.info("Starting Drive folder download: %s", url)
+    downloaded_paths = gdown.download_folder(
+        url,
+        output=str(target_dir),
+        quiet=True,
+        use_cookies=False,
+    )
+
+    if not downloaded_paths:
+        raise RuntimeError("Download failed or no files were found at the provided URL.")
+
+    file_paths = [Path(path).resolve() for path in downloaded_paths if path]
+    logger.info("Downloaded %d entries to %s", len(file_paths), target_dir)
+
+    for file_path in tqdm(file_paths, desc="Verifying downloaded files", unit="file"):
+        if not file_path.exists():
+            raise FileNotFoundError(f"Expected downloaded file missing: {file_path}")
+    return file_paths
+
+
+def update_config(download_dir: Path, config_path: Path = Path("config.yaml")) -> Path:
+    """Create or update config.yaml with the absolute data directory path."""
+    config_data = {}
+    if config_path.exists():
+        try:
+            with config_path.open("r", encoding="utf-8") as file_handle:
+                config_data = yaml.safe_load(file_handle) or {}
+        except yaml.YAMLError as error:
+            logger.warning("Existing config.yaml could not be parsed: %s", error)
+
+    config_data["data_directory"] = str(download_dir.resolve())
+    with config_path.open("w", encoding="utf-8") as file_handle:
+        yaml.safe_dump(config_data, file_handle)
+
+    logger.info("Updated config file at %s", config_path.resolve())
+    return config_path.resolve()
+
+
+def generate_directory_tree(root_dir: Path) -> None:
+    """Print a visual tree of the downloaded folder contents."""
+
+    def _walk(directory: Path, prefix: str = "") -> None:
+        entries = sorted(directory.iterdir(), key=lambda item: (item.is_file(), item.name.lower()))
+        for index, entry in enumerate(entries):
+            is_last = index == len(entries) - 1
             connector = "└── " if is_last else "├── "
-            print(prefix + connector + item)
-            if os.path.isdir(path):
+            print(prefix + connector + entry.name)
+            if entry.is_dir():
                 extension = "    " if is_last else "│   "
-                _print_tree(path, prefix + extension)
+                _walk(entry, prefix + extension)
 
-    if os.path.exists(root_dir):
-        print(root_dir)
-        _print_tree(root_dir)
-    else:
-        print(f"Directory {root_dir} does not exist.")
+    print(root_dir)
+    _walk(root_dir)
+
+
+def main() -> None:
+    """Execute the downloader workflow from parsing to config update."""
+    config = parse_arguments()
+    try:
+        download_drive_folder(config.url, config.target_dir)
+        config_file = update_config(config.target_dir)
+        print(f"\nDownloaded directory: {config.target_dir.resolve()}")
+        print(f"Config file: {config_file}\n")
+        generate_directory_tree(config.target_dir)
+        logger.info("Data download workflow finished successfully.")
+    except Exception as error:
+        logger.exception("Data download workflow failed")
+        raise SystemExit(1) from error
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Download and extract data from a Google Drive URL to the specified directory.")
-    parser.add_argument(
-        "--url", "-u",
-        required=True,
-        help="The shared Google Drive URL (file or folder link) to download from."
-    )
-    parser.add_argument(
-        "--file", "-f",
-        default="./data",
-        help="The target directory to save the downloaded data (default: ./data)."
-    )
+    main()
     
-    args = parser.parse_args()
-
-    target_dir = args.file
-
-    # Load or create config.yaml
-    config_file = 'config.yaml'
-    if os.path.exists(config_file):
-        with open(config_file, 'r') as f:
-            config = yaml.safe_load(f) or {}
-    else:
-        config = {}
-
-    # Update the data_directory
-    config['data_directory'] = target_dir
-
-    # Save back to config.yaml
-    with open(config_file, 'w') as f:
-        yaml.safe_dump(config, f)
-
-    gdrive_url = args.url
-    download_and_extract_data(gdrive_url, target_dir)
-    print_directory_tree(target_dir)
