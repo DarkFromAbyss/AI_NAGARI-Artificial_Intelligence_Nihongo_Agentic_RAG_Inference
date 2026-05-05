@@ -25,5 +25,19 @@ tqdm
 PyYAML
 huggingface_hub
 
+fastapi
+uvicorn
+passlib[bcrypt]
+python-jose[cryptography]
+pydantic[email]
+python-multipart
+jwt
+
+pydantic
+pydantic-settings
+python-multipart
+python-dotenv
+pytest 
+
 pandas
 numpy
