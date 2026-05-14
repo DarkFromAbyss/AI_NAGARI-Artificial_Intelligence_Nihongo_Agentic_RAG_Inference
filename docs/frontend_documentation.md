@@ -5,9 +5,10 @@
 2. [Setup and Installation Guide](#setup-and-installation-guide)
 3. [Directory Structure](#directory-structure)
 4. [Component Breakdown & Functionality](#component-breakdown--functionality)
-5. [Hooks & Utilities](#hooks--utilities)
-6. [Styling & Theme System](#styling--theme-system)
-7. [3D Rendering Architecture](#3d-rendering-architecture)
+5. [Real-Time TTS Architecture](#real-time-tts-architecture)
+6. [Hooks & Utilities](#hooks--utilities)
+7. [Styling & Theme System](#styling--theme-system)
+8. [3D Rendering Architecture](#3d-rendering-architecture)
 
 ---
 
