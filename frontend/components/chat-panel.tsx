@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AnimatedGreeting } from "@/components/animated-greeting";
+import { AudioPlayer } from "@/components/audio-player";
+import { TTSService } from "@/services/tts-service";
+import { Volume2 } from "lucide-react";
 
 interface ChatPanelProps {
   className?: string;
@@ -13,6 +16,9 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  voiceText?: string;
+  audioBlob?: Blob;
+  isGeneratingAudio?: boolean;
 }
 
 // User profile icon
@@ -45,16 +51,19 @@ function SendIcon({ className }: { className?: string }) {
   );
 }
 
-// Individual message component with seamless styling
-function ChatMessage({ message }: { message: Message }) {
+// Individual message component with seamless styling and TTS support
+function ChatMessage({
+  message,
+  onSynthesizeAudio,
+}: {
+  message: Message;
+  onSynthesizeAudio?: (voiceText: string, messageId: string) => void;
+}) {
   const isUser = message.role === "user";
-  
+
   return (
     <div
-      className={cn(
-        "py-3 px-1 transition-colors",
-        isUser ? "pl-8" : "pr-6"
-      )}
+      className={cn("py-3 px-1 transition-colors", isUser ? "pl-8" : "pr-6")}
     >
       {/* Role indicator - subtle typography */}
       <span
@@ -65,18 +74,47 @@ function ChatMessage({ message }: { message: Message }) {
       >
         {isUser ? "You" : "NARAGI"}
       </span>
-      
+
       {/* Message content - printed on surface feel */}
       <div
         className={cn(
           "text-sm leading-relaxed",
-          isUser 
-            ? "text-right text-foreground/90" 
+          isUser
+            ? "text-right text-foreground/90"
             : "text-foreground/95 bg-primary/[0.03] rounded-lg py-2.5 px-3 -mx-1"
         )}
       >
         {message.content}
       </div>
+
+      {/* Audio Player - displayed for assistant messages with voice text */}
+      {!isUser && message.voiceText && (
+        <div className="mt-3 flex flex-col gap-2">
+          {!message.audioBlob && !message.isGeneratingAudio ? (
+            <button
+              onClick={() =>
+                onSynthesizeAudio?.(message.voiceText!, message.id)
+              }
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-lg",
+                "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+                "text-xs font-medium transition-colors duration-200"
+              )}
+              aria-label="Synthesize audio"
+            >
+              <Volume2 size={14} />
+              Click to hear pronunciation
+            </button>
+          ) : message.isGeneratingAudio ? (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+              <div className="animate-spin">⏳</div>
+              Synthesizing audio...
+            </div>
+          ) : (
+            <AudioPlayer audioBlob={message.audioBlob} size="sm" />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -85,66 +123,113 @@ export function ChatPanel({ className }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [showGreeting, setShowGreeting] = useState(true);
+  const ttsServiceRef = useRef<TTSService | null>(null);
+  const [sessionId] = useState(() => `session_${Date.now()}`);
 
-  const handleSubmit = async (e: React.FormEvent) => { // Lưu ý thêm chữ async
-      e.preventDefault();
-      if (!message.trim()) return;
+  // Initialize TTS service on mount
+  useEffect(() => {
+    const ttsService = new TTSService("http://127.0.0.1:8000", sessionId);
+    ttsServiceRef.current = ttsService;
+  }, [sessionId]);
 
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        role: "user",
-        content: message.trim(),
+  // Synthesize audio from voice text
+  const handleSynthesizeAudio = async (voiceText: string, messageId: string) => {
+    try {
+      // Update message to show loading state
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, isGeneratingAudio: true } : msg
+        )
+      );
+
+      const ttsService = ttsServiceRef.current;
+      if (!ttsService) {
+        throw new Error("TTS service not initialized");
+      }
+
+      // Synthesize audio
+      const response = await ttsService.synthesize(voiceText, 1);
+
+      // Update message with audio blob
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                audioBlob: response.audio,
+                isGeneratingAudio: false,
+              }
+            : msg
+        )
+      );
+    } catch (error) {
+      console.error("Error synthesizing audio:", error);
+
+      // Update message to show error state
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, isGeneratingAudio: false } : msg
+        )
+      );
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim()) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: message.trim(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setShowGreeting(false);
+    setMessage("");
+
+    try {
+      // Call API to backend
+      const response = await fetch("http://127.0.0.1:8000/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: userMessage.content,
+          user_id: "user_123",
+          session_id: sessionId,
+          language: "en",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Create AI response with both display and voice text
+      const aiResponse: Message = {
+        id: data.message_id || (Date.now() + 1).toString(),
+        role: "assistant",
+        content: data.message || "No response",
+        voiceText: data.voice_text || undefined,
       };
 
-      setMessages((prev) => [...prev, userMessage]);
-      setShowGreeting(false);
-      setMessage("");
+      setMessages((prev) => [...prev, aiResponse]);
+    } catch (error) {
+      console.error("Error connecting to Backend API:", error);
 
-      try {
-        // Gọi API đến Backend thực tế
-        const response = await fetch("http://127.0.0.1:8000/api/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: userMessage.content,
-            user_id: "user_123", // Tạm thời hardcode, sau này sẽ lấy từ state/auth
-            session_id: "session_abc", 
-            language: "en"
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        // Nhận phản hồi từ Backend và hiển thị
-        const aiResponse: Message = {
-          id: data.message_id || (Date.now() + 1).toString(),
-          role: "assistant",
-          content: `Server nhận tin nhắn thành công: ${data.message} (Message ID: ${data.message_id})` 
-          // Lưu ý: Hiện tại backend của bạn chỉ trả về status chứ chưa trả về câu trả lời thực sự của AI (LLM). 
-          // Khi bạn ráp LLM vào backend, bạn sẽ thay data.message thành trường chứa câu trả lời của AI.
-        };
-        
-        
-        setMessages((prev) => [...prev, aiResponse]);
-
-      } catch (error) {
-        console.error("Lỗi khi kết nối với Backend API:", error);
-        
-        // Hiển thị lỗi ra màn hình chat
-        const errorResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: "Xin lỗi, không thể kết nối đến máy chủ. Vui lòng kiểm tra xem Backend đã chạy chưa."
-        };
-        setMessages((prev) => [...prev, errorResponse]);
-      }
-    };
+      const errorResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content:
+          "Sorry, I couldn't connect to the server. Please check if the backend is running.",
+      };
+      setMessages((prev) => [...prev, errorResponse]);
+    }
+  };
 
   return (
     <aside
@@ -188,7 +273,11 @@ export function ChatPanel({ className }: ChatPanelProps) {
           ) : (
             <div className="py-4 space-y-1">
               {messages.map((msg) => (
-                <ChatMessage key={msg.id} message={msg} />
+                <ChatMessage
+                  key={msg.id}
+                  message={msg}
+                  onSynthesizeAudio={handleSynthesizeAudio}
+                />
               ))}
             </div>
           )}

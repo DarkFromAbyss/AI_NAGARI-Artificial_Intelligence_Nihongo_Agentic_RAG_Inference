@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRM } from "@pixiv/three-vrm";
 import * as THREE from "three";
+import { VRMBlinkController } from "@/lib/vrm-blink-controller";
 
 interface VrmModelProps {
   url: string;
@@ -17,6 +18,7 @@ export function VrmModel({ url, onError, onLoad }: VrmModelProps) {
   const [error, setError] = useState(false);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const loaderRef = useRef<GLTFLoader | null>(null);
+  const blinkControllerRef = useRef<VRMBlinkController | null>(null);
 
   useEffect(() => {
     // Create loader with VRM plugin
@@ -37,6 +39,13 @@ export function VrmModel({ url, onError, onLoad }: VrmModelProps) {
 
           // Create animation mixer for potential animations
           mixerRef.current = new THREE.AnimationMixer(vrmData.scene);
+
+          // Initialize blink controller with natural blink timing
+          blinkControllerRef.current = new VRMBlinkController({
+            blinkDuration: 0.15,
+            minDelaySeconds: 2.5,
+            maxDelaySeconds: 5.0,
+          });
           
           onLoad?.();
         }
@@ -65,7 +74,7 @@ export function VrmModel({ url, onError, onLoad }: VrmModelProps) {
     };
   }, [url, onError, onLoad]);
 
-  // Idle animation - subtle breathing/movement
+  // Idle animation - subtle breathing/movement and blinking
   useFrame((state, delta) => {
     if (vrm) {
       // Update VRM
@@ -84,6 +93,12 @@ export function VrmModel({ url, onError, onLoad }: VrmModelProps) {
           head.rotation.y = Math.sin(time * 0.5) * 0.02;
           head.rotation.z = Math.sin(time * 0.3) * 0.01;
         }
+      }
+
+      // Update and apply eye blink animation
+      if (blinkControllerRef.current) {
+        blinkControllerRef.current.update(delta, time);
+        blinkControllerRef.current.applyToVRM(vrm);
       }
     }
 
