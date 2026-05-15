@@ -6,14 +6,20 @@ Parses dual-track output format (<display> and <voice> tags).
 
 import re
 import unicodedata
+import pandas as pd
 from typing import Tuple
 from llm_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+ROOT = __file__.parent.parent.parent  # Adjust as needed for project structure
+kanji_mapping_path = ROOT / "data" / "vocabulary" / "Kyoiku Kanji Chinese Match.xlsx"
+# C:\Users\ADMIN\Desktop\AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference\data\vocabulary\Kyoiku Kanji Chinese Match.xlsx
 
+df_kanji_mapping = pd.read_excel(kanji_mapping_path)
+KANJI_MAPPING = dict(zip(df_kanji_mapping["Variant"], df_kanji_mapping["Standard"]))
 
 # Kanji variant mapping for normalization
-KANJI_MAPPING = {
+KANJI_EXTRA= {
     "强": "強",     # Cường variant
     "國": "国",     # Quốc old form
     "气": "気",     # Khí variant
@@ -24,6 +30,7 @@ KANJI_MAPPING = {
     "學": "学"      # Học old form
 }
 
+KANJI_MAPPING.update(KANJI_EXTRA)
 
 def normalize_text_input(text: str) -> str:
     """Normalize user input to standard Japanese text format.
