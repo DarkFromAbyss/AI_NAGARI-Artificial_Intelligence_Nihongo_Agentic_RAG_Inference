@@ -10,13 +10,29 @@ import pandas as pd
 from typing import Tuple
 from llm_core.utils.logger import get_logger
 
+from pathlib import Path
+
 logger = get_logger(__name__)
-ROOT = __file__.parent.parent.parent  # Adjust as needed for project structure
-kanji_mapping_path = ROOT / "data" / "vocabulary" / "Kyoiku Kanji Chinese Match.xlsx"
+ROOT = Path(__file__).parent.parent.parent  # Adjust as needed to point to project root
+logger.debug(f"TextNormalizer initialized | ROOT path: {ROOT}")
+KANJI_MAPPING_PATH = ROOT / "data" / "vocabulary" / "Kyoiku Kanji Chinese Match.xlsx"
 # C:\Users\ADMIN\Desktop\AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference\data\vocabulary\Kyoiku Kanji Chinese Match.xlsx
 
-df_kanji_mapping = pd.read_excel(kanji_mapping_path)
-KANJI_MAPPING = dict(zip(df_kanji_mapping["Variant"], df_kanji_mapping["Standard"]))
+df_kanji = pd.read_excel(KANJI_MAPPING_PATH, header = 1 ).drop(columns = ['Unnamed: 0', 'Character #'])
+
+try: 
+    logger.info(f"Loading Kanji mapping from {KANJI_MAPPING_PATH}")
+    df_kanji = pd.read_excel(KANJI_MAPPING_PATH, header = 1 ).drop(columns = ['Unnamed: 0', 'Character #'])
+    logger.info(f"Kanji mapping loaded successfully | {len(df_kanji)} entries")
+except FileNotFoundError as e:
+    logger.error(f"Failed to load Kanji mapping: {e}", exc_info=True)
+    df_kanji = pd.DataFrame(columns=['Traditional (正體字)', 'Kanji (日本漢字)'])
+except Exception as e:
+    logger.error(f"Unexpected error loading Kanji mapping: {e}", exc_info=True)
+    df_kanji = pd.DataFrame(columns=['Traditional (正體字)', 'Kanji (日本漢字)'])
+
+   
+KANJI_MAPPING = dict(zip(df_kanji['Traditional (正體字)'], df_kanji['Kanji (日本漢字)']))
 
 # Kanji variant mapping for normalization
 KANJI_EXTRA= {

@@ -5,6 +5,8 @@ import { useFrame } from "@react-three/fiber";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRM } from "@pixiv/three-vrm";
 import * as THREE from "three";
+import { VrmBlendShapeController } from "@/utils/vrm-blendshape-controller";
+import { VrmAnimationController } from "@/utils/vrm-animation-controller";
 
 interface VrmModelProps {
   url: string;
@@ -12,43 +14,58 @@ interface VrmModelProps {
   onLoad?: () => void;
 }
 
+/**
+ * VrmModel Component
+ * Loads and renders a VRM 3D character model with animations and facial expressions.
+ * Manages character setup, animation mixer, blinking, and body animations.
+ */
 export function VrmModel({ url, onError, onLoad }: VrmModelProps) {
   const [vrm, setVrm] = useState<VRM | null>(null);
   const [error, setError] = useState(false);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
-  const loaderRef = useRef<GLTFLoader | null>(null);
+  const blendShapeControllerRef = useRef<VrmBlendShapeController | null>(null);
+  const animationControllerRef = useRef<VrmAnimationController | null>(null);
 
+  // Initialize VRM loader and load model
   useEffect(() => {
-    // Create loader with VRM plugin
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
-    loaderRef.current = loader;
 
-    // Load the VRM file
     loader.load(
       url,
       (gltf) => {
         if (gltf.userData.vrm) {
           const vrmData = gltf.userData.vrm as VRM;
           setVrm(vrmData);
-
-          // Rotate the model to face the camera (VRM models face +Z by default)
           vrmData.scene.rotation.y = 0;
 
-          // Create animation mixer for potential animations
-          mixerRef.current = new THREE.AnimationMixer(vrmData.scene);
-          
+          // Initialize animation mixer
+          const mixer = new THREE.AnimationMixer(vrmData.scene);
+          mixerRef.current = mixer;
+
+          // Register and start animations
+          if (gltf.animations.length > 0) {
+            const animationController = new VrmAnimationController(mixer);
+            animationController.registerAnimations(gltf.animations);
+            animationControllerRef.current = animationController;
+            animationController.transitionToState("idle", 0);
+          }
+
+          // Initialize blendshape controller for blinking
+          const blendShapeController = new VrmBlendShapeController(vrmData);
+          blendShapeControllerRef.current = blendShapeController;
+
           onLoad?.();
         }
       },
       undefined,
       (err) => {
-        console.log("[v0] VRM load error:", err);
         setError(true);
         onError?.();
       }
     );
 
+    // Cleanup: dispose resources on unmount
     return () => {
       if (vrm) {
         vrm.scene.traverse((obj) => {
@@ -62,44 +79,47 @@ export function VrmModel({ url, onError, onLoad }: VrmModelProps) {
           }
         });
       }
+      if (mixerRef.current) {
+        mixerRef.current.stopAllAction();
+      }
     };
   }, [url, onError, onLoad]);
 
-  // Idle animation - subtle breathing/movement
+  // Animation frame update: handle all animation and expression updates
   useFrame((state, delta) => {
-    if (vrm) {
-      // Update VRM
-      vrm.update(delta);
+    if (!vrm) return;
 
-      // Subtle idle sway animation
-      const time = state.clock.getElapsedTime();
-      
-      // Gentle breathing motion
-      vrm.scene.position.y = Math.sin(time * 1.5) * 0.01 - 0.8;
-      
-      // Very subtle head sway for liveliness
-      if (vrm.humanoid) {
-        const head = vrm.humanoid.getNormalizedBoneNode("head");
-        if (head) {
-          head.rotation.y = Math.sin(time * 0.5) * 0.02;
-          head.rotation.z = Math.sin(time * 0.3) * 0.01;
-        }
-      }
-    }
+    // Update VRM model (applies bone transformations)
+    vrm.update(delta);
 
-    // Update animation mixer if present
+    // Update blinking animation
+    const currentTime = Date.now() / 1000;
+    blendShapeControllerRef.current?.update(currentTime);
+
+    // Update body animations (idle, walk, etc)
     if (mixerRef.current) {
       mixerRef.current.update(delta);
+    }
+
+    // Apply subtle idle breathing for natural movement
+    const time = state.clock.getElapsedTime();
+    const breathingInfluence = Math.sin(time * 1.2) * 0.01;
+
+    if (vrm.humanoid) {
+      const chest = vrm.humanoid.getNormalizedBoneNode("chest");
+      if (chest) {
+        chest.scale.y = 1 + breathingInfluence;
+      }
     }
   });
 
   if (error || !vrm) return null;
 
   return (
-    <primitive 
-      object={vrm.scene} 
-      scale={0.9}
-      position={[0, -0.8, 0]}
+    <primitive
+      object={vrm.scene}
+      scale={1}
+      position={[0, 0, 0]}
     />
   );
 }
