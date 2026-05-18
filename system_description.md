@@ -687,4 +687,448 @@ When updating any component documented here:
 
 ---
 
+## 🎨 TIER 3 (REFACTORED): Frontend - WebGL Text Rendering & Multi-Modal Response Pipeline
+
+### Component 14: WebGLTextRenderer (frontend/components/3d/webgl-text-renderer.tsx)
+
+**Name:** `WebGLTextRenderer` React component
+
+**Internal Dependencies:**
+- `@react-three/drei.Html` (3D overlay rendering)
+- `isomorphic-dompurify` (XSS sanitization)
+- `@/lib/utils.cn` (classname merging)
+- React hooks: `useMemo`
+
+**Purpose:** Render display text content within 3D WebGL space alongside VRM avatar using HTML overlay positioned in 3D coordinates
+
+**Process Flow:**
+1. Accept content string (HTML or plain text) from props
+2. Sanitize HTML using DOMPurify to prevent XSS:
+   - Allow only safe tags: `<p>, <br>, <strong>, <em>, <u>, <span>`
+   - Block dangerous tags: `<script>, <iframe>, <object>, <embed>`
+   - Block event handlers: `onerror, onclick, onmouseover, onfocus, onload`
+3. Memoize sanitized content to prevent unnecessary re-renders
+4. Return early if content empty (null return)
+5. Render Html overlay with:
+   - Position: [1.5, 1, -1] (positioned right of avatar)
+   - Rotation: [0, -0.25, 0] (angled toward camera)
+   - Scale: 0.9 (optimized for readability)
+   - Glassmorphism styling: semi-transparent white/10 bg with blur
+   - Max dimensions: 520px wide, 420px height with scroll
+6. Set `aria-live="polite"` for accessibility
+
+**Key Props:**
+- `content: string | null` - Display text (plain text or HTML)
+- `position?: [number, number, number]` - 3D position coordinates
+- `rotation?: [number, number, number]` - Rotation in radians
+- `scale?: number | [number, number, number]` - Scale factor
+- `className?: string` - Additional CSS classes
+
+**Sanitization Details:**
+- Uses DOMPurify with strict profile
+- Removes style attributes (prevents CSS injection)
+- Strips data attributes (prevents event binding)
+- Returns empty string on sanitization error (fail-safe)
+
+**Styling:**
+- Backdrop blur (xl) + saturation (150%)
+- Border: white/15 with 1px width
+- Shadow: 0 28px 90px rgba(15,23,42,0.18)
+- Rounded corners: 3xl
+- Padding: 1rem (16px)
+- Text color: slate-900 (dark)
+- Overflow: auto (scroll if content exceeds 420px)
+
+**Error Handling:** Invalid HTML → DOMPurify sanitizes, XSS attempts → stripped silently, empty content → component returns null
+
+---
+
+### Component 15: Scene3D (frontend/components/scene-3d.tsx - REFACTORED)
+
+**Name:** `Scene3D` React component (updated)
+
+**Internal Dependencies:**
+- `@react-three/drei` (PerspectiveCamera, OrbitControls)
+- `@react-three/fiber.useFrame` (animation loop)
+- `@/components/grid-floor` (spatial reference)
+- `@/components/vrm-model` (avatar rendering)
+- `@/components/3d/webgl-text-renderer` (3D text display) **[NEW]**
+- Three.js types: `OrbitControls`
+
+**Purpose:** Orchestrate complete 3D scene with camera, controls, lighting, VRM model, grid, and **NEW** WebGL text rendering
+
+**Process Flow:**
+1. Initialize PerspectiveCamera:
+   - Position: [0, 1.2, 3] (optimal full-body framing)
+   - FOV: 40° (wider for visibility)
+   - Near/Far: 0.1/100 (depth range)
+2. Setup OrbitControls:
+   - Enable pan/zoom/rotate
+   - Min distance: 2, Max distance: 6
+   - Target: [0, 0.8, 0] (chest height)
+   - Auto-rotate disabled (user control only)
+3. Configure 4-point lighting (anime-style):
+   - Ambient: 0.7 intensity white
+   - Key light: [3, 4, 5] warm (fff5f0)
+   - Fill light: [-3, 2, 3] cool (f0f5ff)
+   - Rim light: [0, 3, -4] purple (e8e0ff)
+   - Sub light: [0, -2, 3] subtle white
+4. Render grid floor (12×24 divisions, 0.35 opacity)
+5. Load and render VRM model with callbacks
+6. **[NEW]** Conditionally render WebGLTextRenderer:
+   - Only if displayContent prop is truthy
+   - Pass content directly to component
+   - Component handles null/empty rendering
+
+**Key Props (Updated):**
+- `modelUrl: string` - Path to VRM file
+- `onModelLoad?: () => void` - Callback when model loaded
+- `onModelError?: () => void` - Callback on load error
+- `displayContent?: string | null` - **[NEW]** Text to display in 3D space
+
+**Camera Settings:**
+- Position: [0, 1.2, 3] provides full-body view
+- FOV: 40° captures ~50% of character height
+- Near 0.1 clips hands close-up, Far 100 shows far background
+
+**Lighting Philosophy:**
+- Anime-style: soft shadows, color variation (warm + cool)
+- No shadow casting (performance optimization)
+- Intensity balance: 0.7 + 0.9 + 0.5 + 0.4 + 0.2 = 2.7 total
+
+**Error Handling:** Model load error → parent component shows placeholder, missing displayContent → WebGLTextRenderer returns null silently
+
+---
+
+### Component 16: CharacterShowcase (frontend/components/character-showcase.tsx - REFACTORED)
+
+**Name:** `CharacterShowcase` React component (completely refactored)
+
+**Internal Dependencies:**
+- `@react-three/fiber.Canvas` (3D rendering surface)
+- `@/components/scene-3d` (3D scene orchestration)
+- `@/components/model-loader` (loading spinner)
+- `@/lib/utils.cn` (classname merging)
+- React hooks: `useState, useCallback`
+
+**Purpose:** Primary UI display for 3D VRM character with synchronized WebGL text rendering, canvas management, and loading states
+
+**Key Changes (vs Legacy Whiteboard):**
+- ❌ REMOVED: `htmlContent` prop (legacy HTML whiteboard)
+- ❌ REMOVED: `HtmlWhiteboard` component import/render
+- ✅ ADDED: `displayContent` prop for 3D text content
+- ✅ ADDED: Pass displayContent to Scene3D for WebGL rendering
+- ✅ IMPROVED: Cleaner prop interface (single unified content flow)
+
+**Process Flow:**
+1. Initialize model status state: "loading" → "loaded" → "error"
+2. Define error handler:
+   - Set status to "error" → triggers placeholder render
+3. Define load handler:
+   - Set status to "loaded" → shows canvas + model
+4. Render main container:
+   - Flex container with centered content
+   - Soft background (#FCFCFC) with outer padding
+5. Render inner canvas container:
+   - White background with rounded corners (2xl)
+   - Soft shadow with purple tint
+   - Radial gradient backdrop for depth
+6. Conditional rendering based on modelStatus:
+   - **error**: Show PlaceholderCharacter SVG with VRM setup instructions
+   - **loading**: Show ModelLoader spinner overlay
+   - **loaded**: Show Three.js Canvas with Scene3D
+7. Pass displayContent to Scene3D:
+   - Content flows from ChatPanel → AppLayout → CharacterShowcase → Scene3D → WebGLTextRenderer
+8. Render status badge (bottom-center):
+   - Shows "NARAGI • 3D Model Active" when loaded
+   - Shows "NARAGI • Stage Ready" when loading
+
+**Props (Updated):**
+- `className?: string` - Additional CSS classes for main container
+- `displayContent?: string | null` - **[NEW]** Text to render in 3D space
+
+**Data Flow (NEW):**
+```
+ChatPanel receives API response
+    ↓ extracts display2d field
+    ↓ calls setDisplayContent(display2d)
+    ↓
+AppLayout updates displayContent state
+    ↓
+CharacterShowcase receives via displayContent prop
+    ↓
+passes to Scene3D.displayContent
+    ↓
+Scene3D conditionally renders WebGLTextRenderer
+    ↓
+Text appears in 3D space alongside avatar
+```
+
+**Canvas Configuration:**
+- Antialias enabled (smoother edges)
+- Alpha enabled (transparent background)
+- Draw buffer preserved (for screenshots)
+- Background: transparent (relies on CSS backdrop)
+
+**Error Handling:** Model load failure → PlaceholderCharacter shown with setup instructions, no exception thrown to user
+
+**Removed Components:**
+- ❌ `HtmlWhiteboard` (legacy whiteboard UI)
+- ❌ All whiteboard positioning logic
+- ❌ All whiteboard state management
+
+---
+
+### Component 17: ChatPanel (frontend/components/chat-panel.tsx - REFACTORED for Multi-Modal)
+
+**Name:** `ChatPanel` React component (multi-modal response integration)
+
+**Internal Dependencies:**
+- `TTSService` (TTS synthesis)
+- `AudioPlayer` component (audio playback)
+- React hooks: `useState, useRef, useEffect, useCallback`
+
+**Purpose:** Chat interface with synchronized multi-modal response pipeline: text display + voice audio + 3D text rendering
+
+**Key Changes:**
+- ✅ UPDATED: `setActiveHtml` → `setDisplayContent` (prop name)
+- ✅ UPDATED: `BackendChatResponse` interface includes `display, voice, display2d` (vs old `message, voice_text, html_content`)
+- ✅ ADDED: Comments documenting multi-modal response structure
+- ✅ IMPROVED: Clearer response extraction logic with descriptive variable names
+
+**Process Flow:**
+
+**Response Handling (handleSubmit):**
+1. User submits message via form
+2. POST `/api/chat` with standard request payload
+3. Backend returns multi-modal response:
+   ```typescript
+   {
+     message_id: string,
+     display: string,        // Chat history text
+     voice: string,          // TTS synthesis text (Japanese)
+     display2d: string       // 3D space text content
+   }
+   ```
+4. Extract all three fields:
+   - `display` → stored in `aiResponse.content` (shown in chat)
+   - `voice` → stored in `aiResponse.voiceText` (for TTS)
+   - `display2d` → passed to `setDisplayContent()` (rendered in 3D)
+5. Update message state with AI response
+6. Call `setDisplayContent(data.display2d)` to sync 3D rendering
+7. Automatic TTS synthesis triggered via useEffect
+
+**Auto-Synthesis Pipeline:**
+1. Effect watches for new assistant messages with voiceText but no audio
+2. Calls `handleAutoSynthesizeAudio(voiceText, messageId)`
+3. Service marks message: `isGeneratingAudio = true` (shows spinner)
+4. TTS service synthesizes voice text:
+   - POST `/api/tts/synthesize` with { text: voiceText, speaker_id: 1 }
+   - Receives WAV audio blob
+5. Updates message with `audioBlob` (displays AudioPlayer)
+6. Marks `isGeneratingAudio = false`
+
+**Props (Updated):**
+- `className?: string` - Container CSS classes
+- `setDisplayContent?: (content: string | null) => void` - **[CHANGED]** Callback to sync 3D text (vs old setActiveHtml)
+
+**Multi-Modal Response Schema:**
+```
+interface BackendChatResponse {
+  message_id?: string,
+  display?: string,         // Main response for chat UI
+  voice?: string,           // Japanese TTS text
+  display2d?: string        // Content for 3D WebGL rendering
+}
+```
+
+**TTS Service Integration:**
+- Service URL: `http://127.0.0.1:8000/api/tts/synthesize`
+- Request: `{ text, speaker_id: 1, session_id }`
+- Response: WAV audio blob with metadata headers
+- Error handling: Synthesis failures don't block chat (graceful degradation)
+
+**Error Handling:**
+- Network error → Show error message in chat
+- TTS synthesis failure → Message shows without audio (doesn't break chat flow)
+- API validation error → Propagate error response to user
+
+---
+
+### Component 18: AppLayout (frontend/components/app-layout.tsx - REFACTORED)
+
+**Name:** `AppLayout` React component (state orchestration)
+
+**Internal Dependencies:**
+- `Sidebar` (navigation component)
+- `CharacterShowcase` (3D display)
+- `ChatPanel` (chat interface)
+- React hooks: `useState`
+
+**Purpose:** Root layout coordinating the three main UI sections and orchestrating the multi-modal response pipeline
+
+**Key Changes:**
+- ✅ RENAMED: `activeHtml` → `displayContent` (clearer semantics)
+- ✅ RENAMED: `setActiveHtml` → `setDisplayContent` (reflects new 3D rendering)
+- ✅ UPDATED: Props passed to children (CharacterShowcase, ChatPanel)
+- ✅ ADDED: Comprehensive docstring explaining data flow
+
+**State Management:**
+```typescript
+const [displayContent, setDisplayContent] = useState<string | null>(null)
+```
+- Type: string or null (handles empty/no-content states)
+- Initial: null (no content on app load)
+- Setter: passed to ChatPanel
+- Value: passed to CharacterShowcase
+
+**Multi-Modal Response Flow (Complete):**
+```
+User Message: "日本語を説明してください"
+    ↓
+ChatPanel.handleSubmit()
+    ├─ POST /api/chat with user message
+    ↓
+Backend returns:
+    {
+      display: "Japanese is an East Asian language...",
+      voice: "日本語は東アジアの言語で...",
+      display2d: "Japanese Language:\n\nEast Asian language spoken in Japan..."
+    }
+    ↓
+ChatPanel extracts all three fields
+    ├─ Sets aiResponse.content = display
+    ├─ Sets aiResponse.voiceText = voice
+    ├─ Calls setDisplayContent(display2d)
+    ↓
+AppLayout updates state: displayContent = display2d
+    ↓
+CharacterShowcase receives via displayContent prop
+    ├─ Passes to Scene3D
+    ↓
+Scene3D renders WebGLTextRenderer(content={displayContent})
+    ↓
+3D Text appears in 3D space
+    ↓
+Meanwhile: Chat shows message text
+    ↓
+Auto-synthesis: TTS synthesizes voice text
+    ↓
+AudioPlayer displays in chat
+    ↓
+User can click play to hear avatar's speech
+```
+
+**Layout Structure:**
+```
+<AppLayout>
+  <Sidebar />                          // Navigation
+  <CharacterShowcase displayContent={displayContent} />  // 3D scene
+  <ChatPanel setDisplayContent={setDisplayContent} />    // Chat interface
+</AppLayout>
+```
+
+**Props Flow:**
+- `displayContent` → CharacterShowcase → Scene3D → WebGLTextRenderer
+- `setDisplayContent` ← ChatPanel (called on every response)
+- Unidirectional data flow (no circular dependencies)
+
+**Error Handling:**
+- Empty displayContent: WebGLTextRenderer returns null (no rendering)
+- ChatPanel network error: Error message shown, displayContent set to null
+- TTS error: Audio omitted, chat continues normally
+
+---
+
+## 🔄 Multi-Modal Response Pipeline (REFACTORED)
+
+### Request Format (Unchanged)
+```json
+{
+  "message": "高校とは何ですか？",
+  "user_id": "user_123",
+  "session_id": "session_abc",
+  "language": "en"
+}
+```
+
+### Response Format (NEW - Three Synchronized Fields)
+```json
+{
+  "message_id": "msg_12345",
+  "display": "High school (高校) is a secondary education institution...",
+  "voice": "高校は日本の教育制度における...",
+  "display2d": "High School (高校)\n\n定義:\nSecondary education institution in Japan"
+}
+```
+
+### Component Mapping
+| Response Field | Destination Component | Purpose |
+|---|---|---|
+| `display` | ChatPanel message.content | Shown in chat history |
+| `voice` | ChatPanel message.voiceText | TTS synthesis input |
+| `display2d` | Scene3D displayContent | Rendered in 3D space |
+
+### Synchronization Guarantee
+All three fields returned in **single response** from backend:
+- No separate API calls needed
+- Atomic update (display, voice, display2d always synchronized)
+- Consistent state across frontend
+- Predictable data flow
+
+---
+
+## 📋 Schema Updates (Final)
+
+### ChatMessageResponse (backend/schemas/chat_schema.py - FINAL)
+
+**Changes from Previous:**
+- ❌ REMOVED: `message` field (replaced with `display`)
+- ❌ REMOVED: `voice_text` field (replaced with `voice`)
+- ✅ ADDED: `display: str` - Main chat response text
+- ✅ ADDED: `voice: str` - TTS synthesis text (Japanese)
+- ✅ ADDED: `display2d: str` - 3D space rendering content
+
+**Example:**
+```json
+{
+  "status": "success",
+  "display": "Here is the explanation...",
+  "voice": "説明は次の通りです...",
+  "display2d": "Explanation:\n\nKey Points:\n1. ...",
+  "message_id": "msg_12345",
+  "timestamp": "2026-05-18T10:30:45.123456"
+}
+```
+
+### TypeScript BackendChatResponse Interface (frontend/components/chat-panel.tsx)
+
+```typescript
+interface BackendChatResponse {
+  message_id?: string;
+  display?: string;      // Chat history text
+  voice?: string;        // TTS voice text
+  display2d?: string;    // 3D rendering text
+}
+```
+
+---
+
+## 🔒 Standards Compliance (REFACTORED)
+
+| Aspect | Standard | Implementation |
+|--------|----------|-----------------|
+| Component Separation | SoC (Separation of Concerns) | WebGLTextRenderer, CharacterShowcase, Scene3D each handle single responsibility |
+| Props Naming | Snake_case (Python), camelCase (TS) | `displayContent` (camelCase), `setDisplayContent` callback |
+| Type Safety | Strict typing required | All components typed with TypeScript interfaces |
+| Documentation | Self-documenting + Google-style docstrings | Each component has detailed Process Flow documentation |
+| State Management | Lift state to common parent | AppLayout manages displayContent state, passes to children |
+| Data Flow | Unidirectional, no circular deps | ChatPanel → AppLayout → CharacterShowcase → Scene3D |
+| Error Handling | Graceful degradation | Empty content → null render, TTS error → message without audio |
+| Logging | Use logger module, NO print() | Backend logging via logger, frontend error handling via try/catch |
+| No Magic Numbers | Configuration via constants | Position [1.5, 1, -1], rotation [0, -0.25, 0] documented |
+| Modularity | Reusable, <50 lines per function | Each function focused, complex logic broken into steps |
+
+---
+
 **End of System Description Registry**

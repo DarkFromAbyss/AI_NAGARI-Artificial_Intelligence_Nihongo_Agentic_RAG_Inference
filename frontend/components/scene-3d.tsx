@@ -5,20 +5,38 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import { GridFloor } from "@/components/grid-floor";
 import { VrmModel } from "@/components/vrm-model";
+import { WebGLTextRenderer } from "@/components/3d/webgl-text-renderer";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
 interface Scene3DProps {
   modelUrl: string;
   onModelLoad?: () => void;
   onModelError?: () => void;
+  /** Display text content to render in 3D space */
+  displayContent?: string | null;
 }
 
 /**
  * Scene3D Component
- * Orchestrates the 3D scene including camera, controls, lighting, and grid.
+ * 
+ * Orchestrates the 3D scene including camera, controls, lighting, grid, and text rendering.
  * Manages viewport framing to keep the model centered and in-view at all times.
+ * Renders WebGL text content alongside the VRM model using Html overlay.
+ * 
+ * Process Flow:
+ * 1. Initialize camera with optimal framing for full-body model visibility
+ * 2. Setup OrbitControls for user interaction (pan/zoom/rotate)
+ * 3. Configure scene lighting with anime-friendly soft setup
+ * 4. Render grid floor for spatial reference
+ * 5. Load and render VRM avatar model
+ * 6. Conditionally render WebGLTextRenderer if displayContent provided
  */
-export function Scene3D({ modelUrl, onModelLoad, onModelError }: Scene3DProps) {
+export function Scene3D({
+  modelUrl,
+  onModelLoad,
+  onModelError,
+  displayContent = null,
+}: Scene3DProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
 
   // Auto-focus on target when user interacts, maintaining center framing
@@ -83,6 +101,11 @@ export function Scene3D({ modelUrl, onModelLoad, onModelError }: Scene3DProps) {
         onLoad={onModelLoad}
         onError={onModelError}
       />
+
+      {/* WebGL Text Renderer: Display content in 3D space alongside avatar */}
+      {displayContent && displayContent.trim() !== "" && (
+        <WebGLTextRenderer content={displayContent} />
+      )}
     </>
   );
 }

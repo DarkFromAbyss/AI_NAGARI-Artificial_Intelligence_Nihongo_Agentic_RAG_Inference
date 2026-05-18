@@ -6,18 +6,29 @@ import { cn } from "@/lib/utils";
 import { Scene3D } from "@/components/scene-3d";
 import { ModelLoader } from "@/components/model-loader";
 
-import HtmlWhiteboard from "@/components/3d/html-whiteboard";
-
 interface CharacterShowcaseProps {
   className?: string;
-  /** Optional HTML content to display on the 3D whiteboard. */
-  htmlContent?: string | null;
+  /** Display text content to render in 3D WebGL space */
+  displayContent?: string | null;
 }
 
 /**
  * CharacterShowcase Component
- * Provides the main display area for the 3D character model with freedom of movement.
- * Manages canvas rendering, loading states, and error handling.
+ * 
+ * Primary display area for the 3D VRM character model with synchronized
+ * WebGL text rendering. Manages canvas initialization, model loading states,
+ * and error handling. Receives display content from chat responses and passes
+ * it to the 3D scene for rendering alongside the avatar.
+ * 
+ * Process Flow:
+ * 1. Initialize canvas with Three.js/React Three Fiber
+ * 2. Monitor model loading state (loading → loaded → error)
+ * 3. Render placeholder if model fails to load
+ * 4. Pass displayContent to Scene3D for WebGL text rendering
+ * 5. Display status badge indicating active/ready state
+ * 
+ * Props:
+ * - displayContent: Text to render in 3D space (from chat response display2d)
  */
 function PlaceholderCharacter() {
   return (
@@ -94,7 +105,7 @@ function PlaceholderCharacter() {
 
 export function CharacterShowcase({
   className,
-  htmlContent = null,
+  displayContent = null,
 }: CharacterShowcaseProps) {
   const [modelStatus, setModelStatus] = useState<"loading" | "loaded" | "error">(
     "loading"
@@ -152,11 +163,8 @@ export function CharacterShowcase({
                   modelUrl="/AvatarSample_A.vrm"
                   onModelLoad={handleLoad}
                   onModelError={handleError}
+                  displayContent={displayContent}
                 />
-                {/* Render HTML whiteboard when backend-provided HTML is present */}
-                {htmlContent && htmlContent.trim() !== "" && (
-                  <HtmlWhiteboard html={htmlContent} />
-                )}
               </Canvas>
             </>
           )}

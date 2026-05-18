@@ -9,8 +9,8 @@ import { TTSService } from "@/services/tts-service";
 
 interface ChatPanelProps {
   className?: string;
-  /** Setter to provide backend HTML content to the whiteboard */
-  setActiveHtml?: (html: string | null) => void;
+  /** Setter to provide 3D display content to the character showcase */
+  setDisplayContent?: (content: string | null) => void;
 }
 
 interface Message {
@@ -22,11 +22,19 @@ interface Message {
   isGeneratingAudio?: boolean;
 }
 
+/**
+ * Multi-modal response from backend API
+ * 
+ * Structure:
+ * - display: Main text response for chat history display
+ * - voice: TTS synthesis text (Japanese voice content)
+ * - display2d: Text content to render in 3D WebGL space
+ */
 interface BackendChatResponse {
   message_id?: string;
-  message?: string;
-  voice_text?: string;
-  html_content?: string | null;
+  display?: string;
+  voice?: string;
+  display2d?: string;
 }
 
 // User profile icon
@@ -103,7 +111,7 @@ function ChatMessage({
   );
 }
 
-export function ChatPanel({ className, setActiveHtml }: ChatPanelProps) {
+export function ChatPanel({ className, setDisplayContent }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [showGreeting, setShowGreeting] = useState(true);
@@ -138,6 +146,13 @@ export function ChatPanel({ className, setActiveHtml }: ChatPanelProps) {
   /**
    * Auto-synthesize audio for voice text without user interaction.
    * Handles audio queue to prevent overlapping playback.
+   * 
+   * Process Flow:
+   * 1. Add message ID to audio queue
+   * 2. Mark message as generating audio
+   * 3. Call TTS service to synthesize voice text
+   * 4. Update message with audio blob
+   * 5. Remove from queue after completion
    */
   const handleAutoSynthesizeAudio = async (voiceText: string, messageId: string) => {
     try {
@@ -199,7 +214,7 @@ export function ChatPanel({ className, setActiveHtml }: ChatPanelProps) {
     setMessages((prev) => [...prev, userMessage]);
     setShowGreeting(false);
     setMessage("");
-    setActiveHtml?.(null);
+    setDisplayContent?.(null);
 
     try {
       // Call API to backend
@@ -222,17 +237,22 @@ export function ChatPanel({ className, setActiveHtml }: ChatPanelProps) {
 
       const data = (await response.json()) as BackendChatResponse;
 
+      /**
+       * Multi-modal response extraction:
+       * - display: Chat history text content
+       * - voice: TTS synthesis text
+       * - display2d: 3D scene text rendering content
+       */
       const aiResponse: Message = {
         id: data.message_id || (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.message || "No response",
-        voiceText: data.voice_text || undefined,
+        content: data.display || "No response",
+        voiceText: data.voice || undefined,
       };
 
       setMessages((prev) => [...prev, aiResponse]);
-      setActiveHtml?.(data.html_content ?? null);
+      setDisplayContent?.(data.display2d ?? null);
     } catch {
-
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -240,7 +260,7 @@ export function ChatPanel({ className, setActiveHtml }: ChatPanelProps) {
           "Sorry, I couldn't connect to the server. Please check if the backend is running.",
       };
       setMessages((prev) => [...prev, errorResponse]);
-      setActiveHtml?.(null);
+      setDisplayContent?.(null);
     }
   };
 

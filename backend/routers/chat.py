@@ -121,8 +121,9 @@ async def post_chat_message(request: ChatMessageRequest, req: Request) -> ChatMe
         # ========== STEP 5: Format as ChatMessageResponse ==========
         return ChatMessageResponse(
             status="success",
-            message=display_text,  # Display text for UI
-            voice_text=voice_text,  # Japanese text for TTS synthesis
+            display=display_text,  # Display text for UI
+            voice=voice_text,  # Japanese text for TTS synthesis
+            display2d= voice_text,  # For 3D WebGL rendering, we can use the same text or a formatted version
             message_id=message_id,
             timestamp=current_timestamp
         )
