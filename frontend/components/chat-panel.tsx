@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { AnimatedGreeting } from "@/components/animated-greeting";
 import { AudioPlayer } from "@/components/audio-player";
 import { TTSService } from "@/services/tts-service";
-import { Volume2 } from "lucide-react";
 
 interface ChatPanelProps {
   className?: string;
+  /** Setter to provide backend HTML content to the whiteboard */
+  setActiveHtml?: (html: string | null) => void;
 }
 
 interface Message {
@@ -19,6 +20,13 @@ interface Message {
   voiceText?: string;
   audioBlob?: Blob;
   isGeneratingAudio?: boolean;
+}
+
+interface BackendChatResponse {
+  message_id?: string;
+  message?: string;
+  voice_text?: string;
+  html_content?: string | null;
 }
 
 // User profile icon
@@ -54,10 +62,8 @@ function SendIcon({ className }: { className?: string }) {
 // Individual message component with seamless styling and TTS support
 function ChatMessage({
   message,
-  onSynthesizeAudio,
 }: {
   message: Message;
-  onSynthesizeAudio?: (voiceText: string, messageId: string) => void;
 }) {
   const isUser = message.role === "user";
 
@@ -87,44 +93,24 @@ function ChatMessage({
         {message.content}
       </div>
 
-      {/* Audio Player - displayed for assistant messages with voice text */}
-      {!isUser && message.voiceText && (
-        <div className="mt-3 flex flex-col gap-2">
-          {!message.audioBlob && !message.isGeneratingAudio ? (
-            <button
-              onClick={() =>
-                onSynthesizeAudio?.(message.voiceText!, message.id)
-              }
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg",
-                "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
-                "text-xs font-medium transition-colors duration-200"
-              )}
-              aria-label="Synthesize audio"
-            >
-              <Volume2 size={14} />
-              Click to hear pronunciation
-            </button>
-          ) : message.isGeneratingAudio ? (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-              <div className="animate-spin">⏳</div>
-              Synthesizing audio...
-            </div>
-          ) : (
-            <AudioPlayer audioBlob={message.audioBlob} size="sm" />
-          )}
+      {/* Audio Player - displayed for assistant messages with audio */}
+      {!isUser && message.audioBlob && (
+        <div className="mt-3">
+          <AudioPlayer audioBlob={message.audioBlob} size="sm" />
         </div>
       )}
     </div>
   );
 }
 
-export function ChatPanel({ className }: ChatPanelProps) {
+export function ChatPanel({ className, setActiveHtml }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [showGreeting, setShowGreeting] = useState(true);
   const ttsServiceRef = useRef<TTSService | null>(null);
   const [sessionId] = useState(() => `session_${Date.now()}`);
+  const audioQueueRef = useRef<string[]>([]);  // Track pending audio synthesis
+  const isPlayingRef = useRef(false);  // Prevent overlapping audio
 
   // Initialize TTS service on mount
   useEffect(() => {
@@ -132,9 +118,32 @@ export function ChatPanel({ className }: ChatPanelProps) {
     ttsServiceRef.current = ttsService;
   }, [sessionId]);
 
-  // Synthesize audio from voice text
-  const handleSynthesizeAudio = async (voiceText: string, messageId: string) => {
+  // Auto-synthesize and play audio for new assistant messages
+  useEffect(() => {
+    const latestMessage = messages[messages.length - 1];
+
+    // Check if there's a new assistant message with voice text but no audio
+    if (
+      latestMessage &&
+      latestMessage.role === "assistant" &&
+      latestMessage.voiceText &&
+      !latestMessage.audioBlob &&
+      !latestMessage.isGeneratingAudio
+    ) {
+      // Automatically synthesize audio
+      handleAutoSynthesizeAudio(latestMessage.voiceText, latestMessage.id);
+    }
+  }, [messages]);
+
+  /**
+   * Auto-synthesize audio for voice text without user interaction.
+   * Handles audio queue to prevent overlapping playback.
+   */
+  const handleAutoSynthesizeAudio = async (voiceText: string, messageId: string) => {
     try {
+      // Add to queue
+      audioQueueRef.current.push(messageId);
+
       // Update message to show loading state
       setMessages((prev) =>
         prev.map((msg) =>
@@ -162,15 +171,18 @@ export function ChatPanel({ className }: ChatPanelProps) {
             : msg
         )
       );
-    } catch (error) {
-      console.error("Error synthesizing audio:", error);
 
-      // Update message to show error state
+      // Remove from queue after synthesis
+      audioQueueRef.current = audioQueueRef.current.filter(id => id !== messageId);
+    } catch (error) {
+      // Log error but don't block chat - graceful degradation
+      console.error("Audio synthesis failed:", error);
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === messageId ? { ...msg, isGeneratingAudio: false } : msg
         )
       );
+      audioQueueRef.current = audioQueueRef.current.filter(id => id !== messageId);
     }
   };
 
@@ -187,6 +199,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
     setMessages((prev) => [...prev, userMessage]);
     setShowGreeting(false);
     setMessage("");
+    setActiveHtml?.(null);
 
     try {
       // Call API to backend
@@ -207,9 +220,8 @@ export function ChatPanel({ className }: ChatPanelProps) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as BackendChatResponse;
 
-      // Create AI response with both display and voice text
       const aiResponse: Message = {
         id: data.message_id || (Date.now() + 1).toString(),
         role: "assistant",
@@ -218,8 +230,8 @@ export function ChatPanel({ className }: ChatPanelProps) {
       };
 
       setMessages((prev) => [...prev, aiResponse]);
-    } catch (error) {
-      console.error("Error connecting to Backend API:", error);
+      setActiveHtml?.(data.html_content ?? null);
+    } catch {
 
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
@@ -228,6 +240,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
           "Sorry, I couldn't connect to the server. Please check if the backend is running.",
       };
       setMessages((prev) => [...prev, errorResponse]);
+      setActiveHtml?.(null);
     }
   };
 
@@ -276,7 +289,6 @@ export function ChatPanel({ className }: ChatPanelProps) {
                 <ChatMessage
                   key={msg.id}
                   message={msg}
-                  onSynthesizeAudio={handleSynthesizeAudio}
                 />
               ))}
             </div>

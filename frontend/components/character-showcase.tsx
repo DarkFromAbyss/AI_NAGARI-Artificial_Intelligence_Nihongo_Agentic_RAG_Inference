@@ -6,8 +6,12 @@ import { cn } from "@/lib/utils";
 import { Scene3D } from "@/components/scene-3d";
 import { ModelLoader } from "@/components/model-loader";
 
+import HtmlWhiteboard from "@/components/3d/html-whiteboard";
+
 interface CharacterShowcaseProps {
   className?: string;
+  /** Optional HTML content to display on the 3D whiteboard. */
+  htmlContent?: string | null;
 }
 
 /**
@@ -88,7 +92,10 @@ function PlaceholderCharacter() {
   );
 }
 
-export function CharacterShowcase({ className }: CharacterShowcaseProps) {
+export function CharacterShowcase({
+  className,
+  htmlContent = null,
+}: CharacterShowcaseProps) {
   const [modelStatus, setModelStatus] = useState<"loading" | "loaded" | "error">(
     "loading"
   );
@@ -146,6 +153,10 @@ export function CharacterShowcase({ className }: CharacterShowcaseProps) {
                   onModelLoad={handleLoad}
                   onModelError={handleError}
                 />
+                {/* Render HTML whiteboard when backend-provided HTML is present */}
+                {htmlContent && htmlContent.trim() !== "" && (
+                  <HtmlWhiteboard html={htmlContent} />
+                )}
               </Canvas>
             </>
           )}

@@ -21,6 +21,7 @@ import {
 interface AudioPlayerProps {
   audioBlob?: Blob;
   isLoading?: boolean;
+  autoPlay?: boolean;  // NEW: Auto-play audio once available
   onPlay?: () => void;
   onStop?: () => void;
   showTime?: boolean;
@@ -33,6 +34,7 @@ interface AudioPlayerProps {
 export function AudioPlayer({
   audioBlob,
   isLoading = false,
+  autoPlay = true,  // NEW: Default to auto-play for TTS responses
   onPlay,
   onStop,
   showTime = true,
@@ -53,6 +55,15 @@ export function AudioPlayer({
   } = useAudioPlayer();
 
   const [hasError, setHasError] = useState(false);
+  const autoPlayRef = React.useRef(false);  // Track if auto-play was triggered
+
+  // Auto-play when audio blob becomes available
+  useEffect(() => {
+    if (audioBlob && autoPlay && !autoPlayRef.current && state === "idle") {
+      autoPlayRef.current = true;
+      handlePlay();
+    }
+  }, [audioBlob, autoPlay, state, play]);
 
   useEffect(() => {
     if (error) {
