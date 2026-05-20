@@ -16,9 +16,9 @@ logger = get_logger(__name__)
 class ExtractedTags:
     """Data structure for extracted XML tags from LLM output."""
     
-    display: str
     html: str
     text: str
+    display: str
     voice: str
     intent: str
     raw_text: str
@@ -29,7 +29,11 @@ class ExtractedTags:
 class TagExtractor:
     """Extracts and validates XML tags from LLM output.
     
-    Expected format: <html>...</html><display>...</display><voice>...</voice><intent>...</intent>
+    Expected format:<html>...</html>
+                    <text>...</text>
+                    <display>...</display>
+                    <voice>...</voice>
+                    <intent>...</intent>
     """
     
     # Regex patterns for safe XML tag extraction
@@ -44,10 +48,10 @@ class TagExtractor:
     # Fallback values if extraction fails
     FALLBACK_VALUES = {
         'html': '<p>Processing error. Please try again.</p>',
-        'text': 'Processing error. Please try again.',
-        'display': 'Xin lỗi, hệ thống gặp lỗi.',
+        'text': 'Sorry, an error occurred while processing your request.',
+        'display': 'Sorry, an error occurred while processing your request.',
         'voice': 'エラーが発生しました。',
-        'intent': 'other'
+        'intent': 'other',
     }
 
     @staticmethod
@@ -88,11 +92,12 @@ class TagExtractor:
                     extracted['intent']
                 )
                 extracted['intent'] = 'other'
-
+                
+            
             return ExtractedTags(
-                display=extracted['display'],
                 html=extracted['html'],
                 text=extracted['text'],
+                display=extracted['display'],
                 voice=extracted['voice'],
                 intent=extracted['intent'],
                 raw_text=llm_output,
@@ -150,7 +155,7 @@ class TagExtractor:
         Returns:
             True if all required tags are present
         """
-        required_tags = ['html', 'text','display', 'voice', 'intent']
+        required_tags = ['html', 'text', 'display', 'voice', 'intent']
         for tag in required_tags:
             pattern = f'<{tag}>.*?</{tag}>'
             if not re.search(pattern, text, re.DOTALL):
@@ -174,9 +179,9 @@ class TagExtractor:
         """
         logger.warning("Using fallback tags due to: %s", error_msg)
         return ExtractedTags(
-            display=TagExtractor.FALLBACK_VALUES['display'],
             html=TagExtractor.FALLBACK_VALUES['html'],
             text=TagExtractor.FALLBACK_VALUES['text'],
+            display=TagExtractor.FALLBACK_VALUES['display'],
             voice=TagExtractor.FALLBACK_VALUES['voice'],
             intent=TagExtractor.FALLBACK_VALUES['intent'],
             raw_text=raw_text,

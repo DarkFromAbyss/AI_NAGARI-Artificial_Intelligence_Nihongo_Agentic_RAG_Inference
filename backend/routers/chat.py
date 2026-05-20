@@ -109,6 +109,10 @@ async def post_chat_message(request: ChatMessageRequest, req: Request) -> ChatMe
         voice_text = llm_output.voice_text
         text_content = llm_output.text_content  # For future use if needed
         
+        if not text_content:
+            logger.warning("Empty text content in agent response")
+            text_content = "Sorry, an error occurred processing your request."
+        
         if not display_text:
             logger.warning("Empty display text in agent response")
             display_text = "Sorry, an error occurred processing your request."
@@ -125,7 +129,7 @@ async def post_chat_message(request: ChatMessageRequest, req: Request) -> ChatMe
             status="success",
             display=display_text,  # Display text for UI
             voice=voice_text,  # Japanese text for TTS synthesis
-            display2d=display_text,  # For 3D WebGL rendering, we can use the same text or a formatted version
+            display2d=text_content,  # For 3D WebGL rendering, we can use the same text or a formatted version
             message_id=message_id,
             timestamp=current_timestamp
         )
