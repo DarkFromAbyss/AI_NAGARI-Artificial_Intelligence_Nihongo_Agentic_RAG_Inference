@@ -105,6 +105,7 @@ async def post_chat_message(request: ChatMessageRequest, req: Request) -> ChatMe
         # All XML tags have been extracted in llm_service by TagExtractor
         # No need for OutputFormatter here - data is already parsed and validated
         
+        html_text = llm_output.html_content
         display_text = llm_output.assistant_text
         voice_text = llm_output.voice_text
         text_content = llm_output.text_content  # For future use if needed
