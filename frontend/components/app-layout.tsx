@@ -7,20 +7,38 @@ import { CharacterShowcase } from "@/components/character-showcase";
 import { ChatPanel } from "@/components/chat-panel";
 import { GeminiChatInterface } from "@/components/gemini-chat-interface";
 
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  voiceText?: string;
+  audioBlob?: Blob;
+  isGeneratingAudio?: boolean;
+}
+
 /**
  * AppLayout Component
  * 
- * Root layout orchestrating the dual-state interface:
+ * Root layout orchestrating the dual-state interface with UNIFIED chat history.
  * 
  * State A: Model ON (isModelActive === true)
  * - Split layout: 3D Character on left/center + Chat Panel on right
  * - Taskbar visible on far left with toggle button
  * - Full 3D VRM model rendering with text overlay
+ * - Chat history shared from parent state
  * 
  * State B: Model OFF (isModelActive === false)
  * - Unified full-width chat interface (Gemini-like)
  * - Taskbar visible on far left with toggle button
  * - Greeting centered initially, transitions to bottom input on first message
+ * - Chat history shared from parent state
+ * 
+ * CRITICAL FIX: Chat history is now LIFTED to this component and shared across
+ * both views. When the user toggles between 3D (ChatPanel) and 2D (GeminiChatInterface),
+ * the same messages array is passed to both. This ensures:
+ * - No state loss on toggle
+ * - Seamless conversation continuity
+ * - Single source of truth for chat history
  * 
  * Layout Structure:
  * - Taskbar (fixed left-0 w-16) - Always visible, contains toggle
@@ -29,13 +47,20 @@ import { GeminiChatInterface } from "@/components/gemini-chat-interface";
  *   - State B: full-width unified interface
  * 
  * State Management:
+ * - messages: Unified chat history (SHARED across both views)
+ * - setMessages: Setter for chat history
  * - displayContent: Text content for 3D space rendering
  * - statusVoiceText: Voice text for status badge
- * - isModelActive: Toggles between layout states
+ * - isModelActive: Toggles between layout states (DEFAULT: false = 2D ON)
  */
 export function AppLayout() {
-  // State for model visibility
-  const [isModelActive, setIsModelActive] = useState(true);
+  // CRITICAL FIX: Lift messages state to parent so it persists across toggles
+  // This is the single source of truth for chat history
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  // State for model visibility (DEFAULT: false = 2D Chat Interface ON)
+  // FIX: Changed from true to false so 2D chat is shown on initial load
+  const [isModelActive, setIsModelActive] = useState(false);
 
   // State for multi-modal responses
   const [displayContent, setDisplayContent] = useState<string | null>(null);
@@ -55,6 +80,8 @@ export function AppLayout() {
          * STATE A: Model ON - Split Layout
          * Left/Center: 3D Character Showcase
          * Right: Chat Panel with multi-modal response handling
+         * 
+         * FIX: Now passing shared messages and setMessages from parent
          */
         <div className="flex flex-1 overflow-hidden ml-16">
           {/* Center - Character Showcase with 3D text rendering */}
@@ -66,6 +93,8 @@ export function AppLayout() {
 
           {/* Right - Chat Panel */}
           <ChatPanel
+            messages={messages}
+            setMessages={setMessages}
             isModelActive={isModelActive}
             setDisplayContent={setDisplayContent}
             setStatusVoiceText={setStatusVoiceText}
@@ -80,9 +109,13 @@ export function AppLayout() {
          * STATE B: Model OFF - Unified Full-Width Interface
          * Entire viewport for Gemini-like chat with centered greeting
          * and dynamic transitions to bottom input on first message
+         * 
+         * FIX: Now passing shared messages and setMessages from parent
          */
         <div className="flex flex-1 overflow-hidden ml-16">
           <GeminiChatInterface
+            messages={messages}
+            setMessages={setMessages}
             setDisplayContent={setDisplayContent}
             setStatusVoiceText={setStatusVoiceText}
             className={cn(

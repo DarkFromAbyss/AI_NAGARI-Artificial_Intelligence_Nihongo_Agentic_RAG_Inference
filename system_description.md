@@ -844,33 +844,56 @@ When updating any component documented here:
 **Purpose:** Render display text content within 3D WebGL space alongside VRM avatar using HTML overlay positioned in 3D coordinates
 
 **Process Flow:**
-1. Accept content string (HTML or plain text) from props
-2. Sanitize HTML using DOMPurify to prevent XSS:
-   - Allow only safe tags: `<p>, <br>, <strong>, <em>, <u>, <span>`
-   - Block dangerous tags: `<script>, <iframe>, <object>, <embed>`
-   - Block event handlers: `onerror, onclick, onmouseover, onfocus, onload`
-3. Memoize sanitized content to prevent unnecessary re-renders
+1. Accept content string (Markdown or plain text) from props
+2. Parse markdown using react-markdown with custom component renderers:
+   - Headings: centered (text-center) with border separators
+   - Paragraphs: centered text with proper line-height
+   - Lists: centered flex layout with centered list items
+   - Code blocks: inline (styled as tags) and block (monospace overflow)
+   - Tables: centered with border styling, overflow handling
+   - Blockquotes: centered with left border and background tint
+3. Memoize content validation to prevent unnecessary re-renders
 4. Return early if content empty (null return)
-5. Render Html overlay with:
-   - Position: [1.5, 1, -1] (positioned right of avatar)
-   - Rotation: [0, -0.25, 0] (angled toward camera)
-   - Scale: 0.9 (optimized for readability)
+5. Render Html overlay with **LOCKED POSITIONING**:
+   - **Position: [0, 1.5, -2.5]** (CRITICAL FIX - directly behind model, centered)
+     - x=0: Centered horizontally (aligned with VRM model center)
+     - y=1.5: Grounded at chest height (not floating)
+     - z=-2.5: Placed directly BEHIND model (negative Z = away from camera)
+   - Rotation: [0, 0, 0] (level alignment, no tilt)
+   - Scale: 0.2 (optimized for readability)
+   - **center={true}** (CRITICAL FIX - centers pivot point at assigned coordinate)
+   - **transform={true}** (Applies transformations relative to centered pivot)
    - Glassmorphism styling: semi-transparent white/10 bg with blur
-   - Max dimensions: 520px wide, 420px height with scroll
-6. Set `aria-live="polite"` for accessibility
+   - Max dimensions: 520px wide, 280-420px height with scroll
+6. Apply **text-center** to container div (CRITICAL FIX - centers all internal content)
+7. Render all markdown elements with center alignment (h1-h6, p, ul, ol, li, blockquote all text-center)
+8. Set `aria-live="polite"` for accessibility
 
 **Key Props:**
-- `content: string | null` - Display text (plain text or HTML)
-- `position?: [number, number, number]` - 3D position coordinates
-- `rotation?: [number, number, number]` - Rotation in radians
-- `scale?: number | [number, number, number]` - Scale factor
+- `content: string | null` - Display text (markdown or plain text)
+- `position?: [number, number, number]` - LOCKED to [0, 1.5, -2.5] by default
+- `rotation?: [number, number, number]` - LOCKED to [0, 0, 0] (level)
+- `scale?: number | [number, number, number]` - Locked to 0.2 (readability)
 - `className?: string` - Additional CSS classes
 
-**Sanitization Details:**
-- Uses DOMPurify with strict profile
-- Removes style attributes (prevents CSS injection)
-- Strips data attributes (prevents event binding)
-- Returns empty string on sanitization error (fail-safe)
+**Positioning Guarantees (May 25, 2026 FIX):**
+- Absolute position directly behind VRM model at origin
+- Pivot point centered via <Html center={true} /> ensures visual center aligns exactly
+- Eliminates drift/shifting: previous position [1, 1, -1] caused left-right skew
+- Level grounding: fixed y=1.5 prevents tilting or floating unevenly
+- Text centering: internal text-center class centers all content within box
+- Result: Perfectly centered, grounded text box at fixed 3D coordinate
+
+**Markdown Component Styling:**
+- All headings (h1-h6): text-center, bordered separators
+- Paragraphs: text-center, proper line-height
+- Lists (ul/ol): flex flex-col items-center (centers list items)
+- List items: text-center alignment
+- Blockquotes: text-center, mx-auto (centers container)
+- Code (inline): inline-block positioning
+- Tables: flex justify-center wrapper for centered display
+- Table cells: text-center for data rows
+- Strong/em/del: inline formatting preserved
 
 **Styling:**
 - Backdrop blur (xl) + saturation (150%)
@@ -879,9 +902,10 @@ When updating any component documented here:
 - Rounded corners: 3xl
 - Padding: 1rem (16px)
 - Text color: slate-900 (dark)
+- Text alignment: center (all content)
 - Overflow: auto (scroll if content exceeds 420px)
 
-**Error Handling:** Invalid HTML → DOMPurify sanitizes, XSS attempts → stripped silently, empty content → component returns null
+**Error Handling:** Invalid markdown → react-markdown parses as fallback, dangerous tags → stripped by disallowedElements list, empty content → component returns null
 
 ---
 

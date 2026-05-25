@@ -12,6 +12,10 @@ interface ChatPanelProps {
   className?: string;
   /** Whether the 3D model is currently active/visible */
   isModelActive?: boolean;
+  /** Unified chat history from parent (AppLayout) */
+  messages: Message[];
+  /** Setter for chat history from parent (AppLayout) */
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   /** Setter to provide 3D display content to the character showcase */
   setDisplayContent?: (content: string | null) => void;
   /** Setter to provide voice text for status indicator in character showcase */
@@ -120,9 +124,15 @@ function ChatMessage({
   );
 }
 
-export function ChatPanel({ className, isModelActive, setDisplayContent, setStatusVoiceText }: ChatPanelProps) {
+export function ChatPanel({ 
+  className, 
+  isModelActive, 
+  messages,
+  setMessages,
+  setDisplayContent, 
+  setStatusVoiceText 
+}: ChatPanelProps) {
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
   const [showGreeting, setShowGreeting] = useState(true);
   const ttsServiceRef = useRef<TTSService | null>(null);
   const [sessionId] = useState(() => `session_${Date.now()}`);
@@ -134,6 +144,12 @@ export function ChatPanel({ className, isModelActive, setDisplayContent, setStat
     const ttsService = new TTSService("http://127.0.0.1:8000", sessionId);
     ttsServiceRef.current = ttsService;
   }, [sessionId]);
+
+  // FIX: Show/hide greeting based on messages from parent state
+  // This ensures greeting state syncs correctly when toggling between views
+  useEffect(() => {
+    setShowGreeting(messages.length === 0);
+  }, [messages.length]);
 
   // Auto-synthesize and play audio for new assistant messages
   useEffect(() => {
@@ -221,7 +237,7 @@ export function ChatPanel({ className, isModelActive, setDisplayContent, setStat
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setShowGreeting(false);
+    // NOTE: showGreeting is now managed by useEffect based on messages.length
     setMessage("");
     setDisplayContent?.(null);
 

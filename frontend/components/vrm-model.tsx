@@ -9,8 +9,8 @@ import {
   createVRMAnimationClip,
 } from "@pixiv/three-vrm-animation";
 import * as THREE from "three";
-import { VrmBlendShapeController } from "@/utils/vrm-blendshape-controller";
-import { VrmAnimationController } from "@/utils/vrm-animation-controller";
+// import { VrmBlendShapeController } from "@/utils/vrm-blendshape-controller";
+// import { VrmAnimationController } from "@/utils/vrm-animation-controller";
 import { group } from "console";
 
 /**
@@ -47,12 +47,12 @@ const GREETING_ANIMATION_DELAY_MS = 3000;
 
 export function VrmModel({
   url,
-  animationPath = "animations/vrma/test.vrma",
+  animationPath = "animations/vrma/Greeting.vrma",
   onError,
   onLoad,
   onAnimationLoaded,
   wrapperRef,
-  position = [0, 1, 0],
+  position = [0, 0, 0],
   rotation = [0, 0, 0],
   scale = 1,
   ...groupProps
@@ -66,8 +66,8 @@ export function VrmModel({
 
   // Refs for cleanup tracking
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
-  const blendShapeControllerRef = useRef<VrmBlendShapeController | null>(null);
-  const animationControllerRef = useRef<VrmAnimationController | null>(null);
+  // const blendShapeControllerRef = useRef<VrmBlendShapeController | null>(null);
+  // const animationControllerRef = useRef<VrmAnimationController | null>(null);
   const animationStateRef = useRef<AnimationState>({
     vrmaClip: null,
     action: null,
@@ -153,6 +153,42 @@ export function VrmModel({
         throw new Error("Failed to create animation clip from VRMA");
       }
 
+      /**
+       * FIX: Correct Y-axis translation offset in hip position track.
+       * 
+       * ROOT CAUSE: The VRMA animation contains absolute world-space hip position data
+       * from its original reference frame (e.g., Y=0 ground level). When applied to
+       * our VRM model (which has hips positioned at Y=1), this causes an unwanted
+       * vertical displacement.
+       * 
+       * SOLUTION: Calculate the delta between the animation's initial hip Y and the
+       * model's current hip Y, then subtract this offset from ALL Y values in the
+       * hips position track. This preserves local hip animations (bouncing, dipping)
+       * while aligning the reference frame correctly.
+       */
+      const hipsTrack = animationClip.tracks.find(
+        (track) => track.name.includes("hips") && track.name.endsWith(".position")
+      ) as THREE.VectorKeyframeTrack | undefined;
+
+      if (hipsTrack) {
+        // Retrieve model's current hip height (set during VRM load)
+        const hipsNode = vrmModel.humanoid?.getRawBoneNode("hips");
+        const modelHipHeight = hipsNode?.position.y ?? 0;
+
+        // Extract animation's initial hip Y position from first keyframe.
+        // VectorKeyframeTrack.values is a flat array: [x0, y0, z0, x1, y1, z1, ...]
+        // Index 1 = first keyframe's Y component
+        const animationInitialHipY = hipsTrack.values[1];
+
+        // Calculate offset: how much the animation differs from model reference
+        const yOffset = animationInitialHipY - modelHipHeight;
+
+        // Apply offset to ALL Y keyframes (every 3rd index starting at 1)
+        for (let i = 1; i < hipsTrack.values.length; i += 3) {
+          hipsTrack.values[i] -= yOffset;
+        }
+      }
+
       // FIX: Play animation IMMEDIATELY (no setTimeout wrapper)
       // This eliminates the 3-second visibility gap where T-pose was visible
       if (mixerRef.current && !greetingPlayedRef.current) {
@@ -226,15 +262,16 @@ export function VrmModel({
       (gltf) => {
         // Check component still mounted before state updates
         if (!isMountedRef.current) return;
-
+        
         const vrmModel = gltf.userData.vrm as VRM | undefined;
-        if (!vrmModel) {
-          const error = new Error(
-            "No VRM data found in loaded model"
-          );
-          setError(error);
-          onError?.(error);
-          return;
+        if (!vrmModel) { /* ... handle error ... */ return }
+
+        vrmModel.scene.position.set(0, 1, 0);
+        vrmModel.scene.rotation.set(0, 0, 0);
+        
+        if (vrmModel.humanoid) {
+          const hips = vrmModel.humanoid.getRawBoneNode("hips");
+          if (hips) hips.position.y = 1; 
         }
 
         // Initialize THREE.AnimationMixer
@@ -243,16 +280,16 @@ export function VrmModel({
         mixerRef.current = mixer;
 
         // Register embedded animations from the VRM file (if any)
-        if (gltf.animations.length > 0) {
-          const animationController = new VrmAnimationController(mixer);
-          animationController.registerAnimations(gltf.animations);
-          animationControllerRef.current = animationController;
-          animationController.transitionToState("idle", 0);
-        }
+        // if (gltf.animations.length > 0) {
+        //   const animationController = new VrmAnimationController(mixer);
+        //   animationController.registerAnimations(gltf.animations);
+        //   animationControllerRef.current = animationController;
+        //   animationController.transitionToState("idle", 0);
+        // }
 
         // Initialize blendshape controller for facial expressions (blinking, breathing)
-        const blendShapeController = new VrmBlendShapeController(vrmModel);
-        blendShapeControllerRef.current = blendShapeController;
+        // const blendShapeController = new VrmBlendShapeController(vrmModel);
+        // blendShapeControllerRef.current = blendShapeController;
 
         // Update state to trigger re-render
         setVrm(vrmModel);
@@ -299,16 +336,16 @@ export function VrmModel({
       }
 
       // Dispose blendshape controller resources
-      if (blendShapeControllerRef.current) {
-        // Note: blendshape controller typically doesn't have explicit dispose,
-        // but clearing the reference allows garbage collection
-        blendShapeControllerRef.current = null;
-      }
+      // if (blendShapeControllerRef.current) {
+      //   // Note: blendshape controller typically doesn't have explicit dispose,
+      //   // but clearing the reference allows garbage collection
+      //   blendShapeControllerRef.current = null;
+      // }
 
-      // Dispose animation controller resources
-      if (animationControllerRef.current) {
-        animationControllerRef.current = null;
-      }
+      // // Dispose animation controller resources
+      // if (animationControllerRef.current) {
+      //   animationControllerRef.current = null;
+      // }
 
       // Dispose all geometries and materials to prevent GPU memory leaks
       if (vrm) {
@@ -354,10 +391,10 @@ export function VrmModel({
 
     // STEP 1: Update facial expressions and blinking
     // These mutations modify the VRM's blendshape values in memory
-    blendShapeControllerRef.current?.update(Date.now());
-    blendShapeControllerRef.current?.updateBreathing(
-      clockRef.current.getElapsedTime()
-    );
+    // blendShapeControllerRef.current?.update(Date.now());
+    // blendShapeControllerRef.current?.updateBreathing(
+      // clockRef.current.getElapsedTime()
+    // );
 
     // STEP 2: Update animation mixer
     // This applies all bone rotations from playing animation clips

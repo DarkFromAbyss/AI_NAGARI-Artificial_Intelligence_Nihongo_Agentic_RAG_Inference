@@ -27,6 +27,10 @@ interface BackendChatResponse {
 
 interface GeminiChatInterfaceProps {
   className?: string;
+  /** Unified chat history from parent (AppLayout) */
+  messages: Message[];
+  /** Setter for chat history from parent (AppLayout) */
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setDisplayContent?: (content: string | null) => void;
   setStatusVoiceText?: (voiceText: string | null) => void;
 }
@@ -112,6 +116,7 @@ function ChatMessage({
  * GeminiChatInterface Component
  * 
  * Unified chat interface mimicking Gemini's layout and behavior.
+ * Now receives messages from parent (AppLayout) as props for unified state management.
  * 
  * Two States:
  * - Initial (No messages): Centered chat input with animated greeting
@@ -121,14 +126,15 @@ function ChatMessage({
  * - Smooth transitions between states
  * - Bilingual greeting with fade animations
  * - Dynamic message scrolling
- * - Full chat history management
+ * - FIXED: Full chat history preserved across toggle with parent state
  */
 export function GeminiChatInterface({
   className,
+  messages,
+  setMessages,
   setDisplayContent,
   setStatusVoiceText,
 }: GeminiChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);

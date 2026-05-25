@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 interface WebGLTextRendererProps {
   /** Markdown or plain text content to display in 3D space */
   content: string | null;
-  /** Position in 3D space [x, y, z] */
+  /** Position in 3D space [x, y, z] - LOCKED to behind model by default */
   position?: [number, number, number];
   /** Rotation in radians [x, y, z] */
   rotation?: [number, number, number];
@@ -24,8 +24,28 @@ interface WebGLTextRendererProps {
  *
  * Renders markdown content with full syntax support (headings, tables, lists,
  * blockquotes, code blocks, and text formatting) as a 3D overlay positioned
- * alongside the VRM model. Content is displayed with glassmorphism styling
- * and supports multi-line text with scroll capability.
+ * directly BEHIND the VRM model at a fixed, grounded location.
+ *
+ * CRITICAL FIX: Positioning & Centering
+ * ======================================
+ * 1. **Absolute Position**: Locked at [0, 1.5, -2.5]
+ *    - x=0: Centered horizontally (directly aligned with model center)
+ *    - y=1.5: Positioned at chest height of VRM model (grounded, not floating)
+ *    - z=-2.5: Placed directly BEHIND the model (negative Z = away from camera)
+ *
+ * 2. **Pivot Point Fix**: Uses <Html center={true} transform={true} />
+ *    - center=true: Centers the box's pivot at the assigned coordinate
+ *    - transform=true: Applies rotation/scale transformations relative to pivot
+ *    - Eliminates visual drift/shifting caused by misaligned anchor points
+ *
+ * 3. **Text Alignment**: Internal div has text-center to center all content
+ *    - Content is centered within the box boundaries
+ *    - Text doesn't shift left/right based on word length
+ *    - Heading/paragraph alignment is symmetric
+ *
+ * 4. **Grounding**: Fixed y=1.5 ensures the box stays level on world plane
+ *    - Not tilted or floating unevenly
+ *    - Consistent vertical position relative to model
  *
  * Process Flow:
  * 1. Accept markdown content as string
@@ -33,76 +53,79 @@ interface WebGLTextRendererProps {
  * 3. Sanitize output via react-markdown's built-in XSS protection
  * 4. Render as Html overlay in 3D space using @react-three/drei
  * 5. Apply glassmorphism styling for visual consistency
- * 6. Position relative to camera for optimal visibility
+ * 6. Position LOCKED directly behind VRM model at [0, 1.5, -2.5]
+ * 7. Center the box's pivot point to eliminate shift/drift
  *
  * WebGL Bridge Strategy:
  * - Uses @react-three/drei's <Html> component for DOM-to-3D projection
+ * - center={true} ensures the element's center aligns with the assigned position
  * - Automatic scaling/positioning synchronization with WebGL camera
  * - Proper z-indexing and depth culling maintained by drei
  * - All markdown elements rendered as standard DOM within the Html context
  */
 
 // Custom markdown component renderers matching glassmorphism aesthetic
+// FIX: All components respect center alignment from parent container
 const markdownComponents: Components = {
   h1: ({ children }: { children?: ReactNode }) => (
-    <h1 className="text-lg font-bold mb-3 text-slate-900 border-b border-white/20 pb-2">
+    <h1 className="text-lg font-bold mb-3 text-slate-900 border-b border-white/20 pb-2 text-center">
       {children}
     </h1>
   ),
   h2: ({ children }: { children?: ReactNode }) => (
-    <h2 className="text-base font-bold mb-2 text-slate-800 border-b border-white/10 pb-1.5">
+    <h2 className="text-base font-bold mb-2 text-slate-800 border-b border-white/10 pb-1.5 text-center">
       {children}
     </h2>
   ),
   h3: ({ children }: { children?: ReactNode }) => (
-    <h3 className="text-sm font-semibold mb-2 text-slate-800">
+    <h3 className="text-sm font-semibold mb-2 text-slate-800 text-center">
       {children}
     </h3>
   ),
   h4: ({ children }: { children?: ReactNode }) => (
-    <h4 className="text-sm font-semibold mb-1.5 text-slate-800">
+    <h4 className="text-sm font-semibold mb-1.5 text-slate-800 text-center">
       {children}
     </h4>
   ),
   h5: ({ children }: { children?: ReactNode }) => (
-    <h5 className="text-xs font-semibold mb-1.5 text-slate-800">
+    <h5 className="text-xs font-semibold mb-1.5 text-slate-800 text-center">
       {children}
     </h5>
   ),
   h6: ({ children }: { children?: ReactNode }) => (
-    <h6 className="text-xs font-medium mb-1 text-slate-800">
+    <h6 className="text-xs font-medium mb-1 text-slate-800 text-center">
       {children}
     </h6>
   ),
   p: ({ children }: { children?: ReactNode }) => (
-    <p className="mb-2 text-sm leading-relaxed text-slate-800">
+    <p className="mb-2 text-sm leading-relaxed text-slate-800 text-center">
       {children}
     </p>
   ),
   ul: ({ children }: { children?: ReactNode }) => (
-    <ul className="list-disc list-inside mb-2 ml-2 text-sm text-slate-800">
+    <ul className="list-disc list-inside mb-2 ml-2 text-sm text-slate-800 flex flex-col items-center">
       {children}
     </ul>
   ),
   ol: ({ children }: { children?: ReactNode }) => (
-    <ol className="list-decimal list-inside mb-2 ml-2 text-sm text-slate-800">
+    <ol className="list-decimal list-inside mb-2 ml-2 text-sm text-slate-800 flex flex-col items-center">
       {children}
     </ol>
   ),
   li: ({ children }: { children?: ReactNode }) => (
-    <li className="mb-1">
+    <li className="mb-1 text-center">
       {children}
     </li>
   ),
   blockquote: ({ children }: { children?: ReactNode }) => (
-    <blockquote className="border-l-4 border-white/30 pl-3 py-1 mb-2 italic text-slate-700 bg-white/5 my-2 rounded-r">
+    <blockquote className="border-l-4 border-white/30 pl-3 py-1 mb-2 italic text-slate-700 bg-white/5 my-2 rounded-r text-center mx-auto">
       {children}
     </blockquote>
   ),
   code: ({ children, inline }: { children?: ReactNode; inline?: boolean }) => {
     if (inline) {
       return (
-        <code className="bg-slate-900/20 px-1.5 py-0.5 rounded text-xs font-mono text-slate-900 border border-white/10">
+        <code className="bg-slate-900/20 px-1.5 py-0.5 rounded text-xs font-mono text-slate-900 border border-white/10 inline-block">
           {children}
         </code>
       );
@@ -119,8 +142,8 @@ const markdownComponents: Components = {
     </pre>
   ),
   table: ({ children }: { children?: ReactNode }) => (
-    <div className="overflow-x-auto mb-2">
-      <table className="w-full text-xs border-collapse border border-white/20">
+    <div className="overflow-x-auto mb-2 flex justify-center">
+      <table className="text-xs border-collapse border border-white/20">
         {children}
       </table>
     </div>
@@ -141,7 +164,7 @@ const markdownComponents: Components = {
     </tr>
   ),
   td: ({ children }: { children?: ReactNode }) => (
-    <td className="px-2 py-1 border-r border-white/15 last:border-r-0 text-slate-800">
+    <td className="px-2 py-1 border-r border-white/15 last:border-r-0 text-slate-800 text-center">
       {children}
     </td>
   ),
@@ -182,7 +205,7 @@ const markdownComponents: Components = {
 
 export function WebGLTextRenderer({
   content,
-  position = [1, 1, -1],
+  position = [0, 1.5, -2.5],  // FIX: Locked position directly behind model, centered
   rotation = [0, 0, 0],
   scale = 0.2,
   className,
@@ -199,8 +222,8 @@ export function WebGLTextRenderer({
       position={position}
       rotation={rotation}
       scale={scale}
-      center
-      transform
+      center={true}        // FIX: center=true ensures pivot point aligns with position
+      transform={true}     // FIX: Applies transformations relative to the centered pivot
       occlude={false}
     >
       <div
@@ -208,6 +231,7 @@ export function WebGLTextRenderer({
           "max-w-[520px] min-w-[280px] max-h-[420px] overflow-y-auto rounded-3xl border border-white/15",
           "bg-white/10 p-4 text-sm text-slate-900 shadow-[0_32px_120px_-60px_rgba(15,23,42,0.75)]",
           "backdrop-blur-xl backdrop-saturate-150",
+          "text-center",  // FIX: Center-align all internal text content
           className
         )}
         style={{
