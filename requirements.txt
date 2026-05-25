@@ -10,6 +10,7 @@ semantic-router
 sentence-transformers
 
 rapidfuzz
+langdetect
 rank_bm25
 langgraph
 langchain

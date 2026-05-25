@@ -5,10 +5,13 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AnimatedGreeting } from "@/components/animated-greeting";
 import { AudioPlayer } from "@/components/audio-player";
+import { MarkdownMessage } from "@/components/markdown-message";
 import { TTSService } from "@/services/tts-service";
 
 interface ChatPanelProps {
   className?: string;
+  /** Whether the 3D model is currently active/visible */
+  isModelActive?: boolean;
   /** Setter to provide 3D display content to the character showcase */
   setDisplayContent?: (content: string | null) => void;
   /** Setter to provide voice text for status indicator in character showcase */
@@ -91,16 +94,20 @@ function ChatMessage({
         {isUser ? "You" : "NARAGI"}
       </span>
 
-      {/* Message content - printed on surface feel */}
+      {/* Message content - natural text flow without container */}
       <div
         className={cn(
           "text-sm leading-relaxed",
           isUser
             ? "text-right text-foreground/90"
-            : "text-foreground/95 bg-primary/[0.03] rounded-lg py-2.5 px-3 -mx-1"
+            : "text-foreground/95"
         )}
       >
-        {message.content}
+        {isUser ? (
+          message.content
+        ) : (
+          <MarkdownMessage content={message.content} />
+        )}
       </div>
 
       {/* Audio Player - displayed for assistant messages with audio */}
@@ -113,7 +120,7 @@ function ChatMessage({
   );
 }
 
-export function ChatPanel({ className, setDisplayContent, setStatusVoiceText }: ChatPanelProps) {
+export function ChatPanel({ className, isModelActive, setDisplayContent, setStatusVoiceText }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [showGreeting, setShowGreeting] = useState(true);

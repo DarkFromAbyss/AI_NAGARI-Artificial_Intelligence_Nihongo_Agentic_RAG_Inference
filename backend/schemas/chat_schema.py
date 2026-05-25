@@ -27,7 +27,7 @@ class ChatMessageRequest(BaseModel):
     )
     user_id: Optional[str] = Field(None, description="Optional user identifier")
     session_id: Optional[str] = Field(None, description="Optional session identifier")
-    language: Optional[str] = Field("en", description="Language code (ISO 639-1)")
+    language: Optional[str] = Field("vi", description="Language code (ISO 639-1)")
 
     class Config:
         """Pydantic config for JSON schema generation."""

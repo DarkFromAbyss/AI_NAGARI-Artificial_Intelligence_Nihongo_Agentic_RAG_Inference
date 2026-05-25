@@ -7,7 +7,7 @@ Orchestrates LangGraph agent, semantic cache, and tool handling.
 import os
 import time
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, Union, List, Dict, Any
 from datetime import datetime
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -26,6 +26,51 @@ from llm_core.agents.tool_handlers import search_vocabulary, search_grammar, sea
 from llm_core.prompts.system_prompts import SystemPromptManager
 
 logger = get_logger(__name__)
+
+
+def _normalize_llm_content(content: Union[str, List[Dict[str, Any]]]) -> str:
+    """Convert LLM message content to string, handling Google Gemini API format.
+    
+    Google's Gemini API returns content as either:
+    - A string (simple text response)
+    - A list of content blocks: [{'type': 'text', 'text': '...'}, ...]
+    
+    Args:
+        content: Raw message content from LLM (string or list)
+    
+    Returns:
+        Normalized content as a string
+    
+    Process Flow:
+        1. If content is already a string, return it directly
+        2. If content is a list, iterate through each block
+        3. Extract text from blocks with type='text' (Google API format)
+        4. Concatenate all text blocks with newlines
+        5. Return concatenated result or empty string if no text found
+        6. Log warnings for unexpected formats
+    """
+    if isinstance(content, str):
+        return content
+    
+    if isinstance(content, list):
+        text_parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get('type') == 'text':
+                text = block.get('text', '')
+                if text:
+                    text_parts.append(text)
+        
+        if text_parts:
+            result = ''.join(text_parts)  # Concatenate without extra newlines
+            logger.debug(f"Extracted text from {len(content)} content blocks: {len(result)} chars")
+            return result
+        else:
+            logger.warning(f"No text blocks found in content list: {len(content)} items")
+            return ""
+    
+    # Fallback for unexpected types
+    logger.warning(f"Unexpected content type: {type(content).__name__}. Converting to string.")
+    return str(content)
 
 
 class SenseiAgent:
@@ -261,7 +306,8 @@ class SenseiAgent:
                 
                 latest_message = chunk["messages"][-1]
                 if latest_message.type == "ai" and latest_message.content:
-                    final_response_text = latest_message.content
+                    # Normalize content: handle Google Gemini API format (list or string)
+                    final_response_text = _normalize_llm_content(latest_message.content)
             
             logger.info(f"""Agent execution completed | 
                         Iterations: {iterations} | 

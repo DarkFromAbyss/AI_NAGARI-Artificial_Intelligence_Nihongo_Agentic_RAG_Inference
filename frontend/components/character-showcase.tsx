@@ -193,8 +193,8 @@ export function CharacterShowcase({
         </div>
 
         {/* Status Badge */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-          <span className="text-base font-semibold text-muted-foreground">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-card/80 backdrop-blur-sm border border-border/50 z-10 pointer-events-none">
+          <span className="text-xs font-medium text-muted-foreground">
             {getStatusBadgeText()}
           </span>
         </div>

@@ -166,3 +166,110 @@
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
+
+/* ============================================
+   Custom Animations for Layout Transitions
+   ============================================ */
+
+@layer utilities {
+  /* Keyframe animations for smooth transitions */
+  @keyframes wave-out {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      opacity: 0.5;
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.95);
+    }
+  }
+
+  @keyframes wave-in {
+    0% {
+      opacity: 0;
+      transform: translateY(8px) scale(0.95);
+    }
+    50% {
+      opacity: 0.5;
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes fade-slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-slide-down {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-16px);
+    }
+  }
+
+  @keyframes layout-transition {
+    0% {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /* Animation utility classes */
+  .animate-wave-out {
+    animation: wave-out 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  .animate-wave-in {
+    animation: wave-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  .animate-fade-slide-up {
+    animation: fade-slide-up 0.5s ease-out forwards;
+  }
+
+  .animate-fade-slide-down {
+    animation: fade-slide-down 0.5s ease-in forwards;
+  }
+
+  .animate-layout-transition {
+    animation: layout-transition 0.5s ease-out forwards;
+  }
+
+  /* Smooth state transitions for all elements */
+  .transition-all-smooth {
+    @apply transition-all duration-500 ease-out;
+  }
+
+  /* Centered input animation for initial state */
+  .animate-center-to-bottom {
+    animation: fade-slide-down 0.5s ease-out forwards;
+  }
+
+  .animate-greeting-exit {
+    animation: fade-slide-down 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  .animate-greeting-enter {
+    animation: fade-slide-up 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+}

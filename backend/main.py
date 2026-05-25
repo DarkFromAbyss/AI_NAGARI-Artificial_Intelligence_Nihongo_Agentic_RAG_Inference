@@ -264,6 +264,19 @@ def create_app() -> FastAPI:
     # Include TTS routes
     app.include_router(tts.router)
 
+    # ==================== HEALTH CHECK ENDPOINT ====================
+    
+    @app.get("/health")
+    async def health_check():
+        """Simple health check to verify backend is operational."""
+        return {
+            "status": "ok",
+            "service": settings.app_name,
+            "version": settings.app_version,
+            "sensei_agent_initialized": hasattr(app.state, "sensei_agent") and app.state.sensei_agent is not None,
+            "tts_service_initialized": hasattr(app.state, "tts_service") and app.state.tts_service is not None,
+        }
+
     logger.info("FastAPI application created and configured successfully")
     return app
 

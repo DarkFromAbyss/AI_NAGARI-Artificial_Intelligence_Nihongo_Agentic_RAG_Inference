@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useFrame } from "@react-three/fiber";
+import { ThreeElements, useFrame} from "@react-three/fiber";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRM, VRMUtils, VRMCore,} from "@pixiv/three-vrm";
 import {
@@ -11,6 +11,7 @@ import {
 import * as THREE from "three";
 import { VrmBlendShapeController } from "@/utils/vrm-blendshape-controller";
 import { VrmAnimationController } from "@/utils/vrm-animation-controller";
+import { group } from "console";
 
 /**
  * VrmModel Component
@@ -24,12 +25,16 @@ import { VrmAnimationController } from "@/utils/vrm-animation-controller";
  * - Error resilience with graceful fallback
  */
 
-interface VrmModelProps {
+type VrmModelProps = ThreeElements["group"] & {
   url: string;
   animationPath?: string; // Path to VRMA file (default: "animations/vrma/VRMA_02.vrma")
   onError?: (error: Error) => void;
   onLoad?: (vrm: VRM) => void;
   onAnimationLoaded?: (animationName: string) => void;
+  wrapperRef?: React.Ref<THREE.Group>;
+  position?: [number, number, number] | THREE.Vector3;
+  rotation?: [number, number, number] | THREE.Euler;
+  scale?: [number, number, number] | THREE.Vector3 | number;
 }
 
 interface AnimationState {
@@ -42,14 +47,22 @@ const GREETING_ANIMATION_DELAY_MS = 3000;
 
 export function VrmModel({
   url,
-  animationPath = "animations/vrma/Greeting.vrma",
+  animationPath = "animations/vrma/test.vrma",
   onError,
   onLoad,
   onAnimationLoaded,
+  wrapperRef,
+  position = [0, 1, 0],
+  rotation = [0, 0, 0],
+  scale = 1,
+  ...groupProps
 }: VrmModelProps) {
   const [vrm, setVrm] = useState<VRM | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isAnimationLoading, setIsAnimationLoading] = useState(true);
+  // FIX: Track avatar visibility state - avatar stays hidden until animation is actively playing
+  // This prevents the T-pose flash between VRM load and animation start
+  const [isAvatarVisible, setIsAvatarVisible] = useState(false);
 
   // Refs for cleanup tracking
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
@@ -77,8 +90,11 @@ export function VrmModel({
   /**
    * Load and apply VRMA animation to the loaded VRM model.
    * This function is async and handles both VRM and VRMA loading.
-   * The animation is prepared but NOT played immediately; instead, it is
-   * triggered after GREETING_ANIMATION_DELAY_MS with one-time execution.
+   * 
+   * CRITICAL FIX (T-pose Flash Resolution):
+   * - Animation NOW plays IMMEDIATELY upon loading (no 3-second delay)
+   * - Avatar visibility is set to true when animation starts
+   * - This prevents the T-pose visibility gap between VRM load and animation play
    */
   const loadVRMAAnimation = async (vrmModel: VRMCore) => {
     try {
@@ -137,43 +153,42 @@ export function VrmModel({
         throw new Error("Failed to create animation clip from VRMA");
       }
 
-      // Store the prepared clip and create a delayed trigger for one-time execution
+      // FIX: Play animation IMMEDIATELY (no setTimeout wrapper)
+      // This eliminates the 3-second visibility gap where T-pose was visible
       if (mixerRef.current && !greetingPlayedRef.current) {
-        // Clear any existing timeout from previous loads
+        // Clear any existing timeout from previous loads (defensive)
         if (greetingTimeoutRef.current) {
           clearTimeout(greetingTimeoutRef.current);
+          greetingTimeoutRef.current = null;
         }
 
-        // Schedule greeting animation to play after the delay
-        // This ensures one-time execution on component mount/reload
-        greetingTimeoutRef.current = setTimeout(() => {
-          if (!isMountedRef.current || !mixerRef.current) return;
+        // Stop any existing animation action to avoid conflicts
+        if (animationStateRef.current.action) {
+          animationStateRef.current.action.stop();
+        }
 
-          // Double-check that greeting hasn't been played (defensive check)
-          if (greetingPlayedRef.current) return;
+        // Create new action from the retargeted clip
+        const newAction = mixerRef.current.clipAction(animationClip);
 
-          // Stop any existing animation action to avoid conflicts
-          if (animationStateRef.current.action) {
-            animationStateRef.current.action.stop();
-          }
+        // Configure for ONE-TIME playback (not looping)
+        newAction.clampWhenFinished = true; // Hold final pose after animation ends
+        newAction.loop = THREE.LoopOnce; // Play only once
 
-          // Create new action from the retargeted clip
-          const newAction = mixerRef.current.clipAction(animationClip);
+        // Play the animation IMMEDIATELY
+        newAction.play();
 
-          // Configure for ONE-TIME playback (not looping)
-          newAction.clampWhenFinished = true; // Hold final pose after animation ends
-          newAction.loop = THREE.LoopOnce; // Play only once
+        // Store references for cleanup later
+        animationStateRef.current.vrmaClip = animationClip;
+        animationStateRef.current.action = newAction;
 
-          // Play the animation
-          newAction.play();
+        // Mark greeting as played to prevent re-triggering
+        greetingPlayedRef.current = true;
 
-          // Store references for cleanup later
-          animationStateRef.current.vrmaClip = animationClip;
-          animationStateRef.current.action = newAction;
-
-          // Mark greeting as played to prevent re-triggering
-          greetingPlayedRef.current = true;
-        }, GREETING_ANIMATION_DELAY_MS);
+        // FIX: Show avatar NOW that animation is playing
+        // This prevents the T-pose flash by ensuring avatar is only visible when animated
+        if (isMountedRef.current) {
+          setIsAvatarVisible(true);
+        }
       }
 
       // Notify parent component that animation loaded successfully
@@ -189,6 +204,8 @@ export function VrmModel({
         setError(error);
         onError?.(error);
         setIsAnimationLoading(false);
+        // FIX: Show avatar even on error to provide visual feedback
+        setIsAvatarVisible(true);
       }
     }
   };
@@ -219,18 +236,6 @@ export function VrmModel({
           onError?.(error);
           return;
         }
-
-        // 1. Đặt góc xoay mặc định
-        vrmModel.scene.rotation.y = 0;
-
-        // 2. Tạo một Box3 để tính toán hộp bao quanh toàn bộ lưới (Mesh) của Model
-        const box = new THREE.Box3().setFromObject(vrmModel.scene);
-
-        // 3. Lấy giá trị Y nhỏ nhất của mô hình (tọa độ thấp nhất của lòng bàn chân)
-        const minY = box.min.y;
-        
-        // 4. Cân chỉnh trục Y để đẩy chân mô hình lên trên mặt phẳng y = 0
-        vrmModel.scene.position.set(0, -minY , 0);
 
         // Initialize THREE.AnimationMixer
         // This is required for playing animation clips
@@ -275,11 +280,15 @@ export function VrmModel({
     return () => {
       isMountedRef.current = false;
 
-      // Clear greeting animation timeout to prevent memory leaks
+      // Clear greeting animation timeout to prevent memory leaks (defensive cleanup)
       if (greetingTimeoutRef.current) {
         clearTimeout(greetingTimeoutRef.current);
         greetingTimeoutRef.current = null;
       }
+
+      // Reset avatar visibility for next load
+      setIsAvatarVisible(false);
+      greetingPlayedRef.current = false;
 
       // Stop all animations
       if (mixerRef.current) {
@@ -366,18 +375,26 @@ export function VrmModel({
     return null;
   }
 
-  // Render the VRM model's scene
-  if (vrm) {
+  // Render the VRM model's scene - now with visibility control to prevent T-pose flash
+  // FIX: Avatar only renders when isAvatarVisible is true (i.e., animation is playing)
+  // This prevents the T-pose from appearing between model load and animation start
+  if (vrm && isAvatarVisible) {
     return (
-      <primitive
-        object={vrm.scene}
-        scale={1}
-        position={[0, 0, 0]}
-      />
+      <group 
+        ref={wrapperRef} 
+        position={position}
+        rotation={rotation}
+        scale={scale}
+      >
+        <primitive
+          object={vrm.scene}
+          scale={1}
+          position={[0, 0, 0]}
+        />
+      </group>
     );
   }
 
-  // Loading state: render nothing until VRM loads
   return null;
 }
 
