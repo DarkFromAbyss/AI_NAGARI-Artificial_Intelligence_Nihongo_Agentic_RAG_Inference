@@ -12,6 +12,10 @@ interface CharacterShowcaseProps {
   displayContent?: string | null;
   /** Voice text from AI response to display in status indicator */
   statusVoiceText?: string | null;
+  /** Intent tag from the message for conditional rendering */
+  displayIntent?: string;
+  /** Whether the 3D model is active/visible */
+  isModelActive?: boolean;
 }
 
 /**
@@ -109,6 +113,8 @@ export function CharacterShowcase({
   className,
   displayContent = null,
   statusVoiceText = null,
+  displayIntent,
+  isModelActive = true,
 }: CharacterShowcaseProps) {
   const [modelStatus, setModelStatus] = useState<"loading" | "loaded" | "error">(
     "loading"
@@ -186,6 +192,8 @@ export function CharacterShowcase({
                   onModelLoad={handleLoad}
                   onModelError={handleError}
                   displayContent={displayContent}
+                  displayIntent={displayIntent}
+                  isModelActive={isModelActive}
                 />
               </Canvas>
             </>

@@ -3,11 +3,14 @@
  *
  * Provides React hook for playing audio with controls using Web Audio API.
  * Ensures smooth, real-time playback with buffer management.
+ * Automatically registers with global audio manager to prevent overlapping audio
+ * when switching between interface states.
  */
 
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useAudioManager } from "@/hooks/use-audio-manager";
 
 export type AudioPlaybackState = "idle" | "loading" | "playing" | "paused" | "error";
 
@@ -27,6 +30,7 @@ interface UseAudioPlayerReturn {
 
 /**
  * React hook for Web Audio API playback with state management.
+ * Automatically registers with global audio manager to prevent overlapping audio.
  *
  * @returns Object with playback control methods and state
  */
@@ -43,6 +47,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const startTimeRef = useRef(0);
   const pausedTimeRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
+
+  // Register with global audio manager to prevent overlapping audio
+  const { registerAudioPlayer, unregisterAudioPlayer } = useAudioManager();
+  const playerIdRef = useRef<string | null>(null);
 
   // Initialize Web Audio API context
   const initAudioContext = useCallback(() => {
@@ -77,14 +85,45 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, [state, duration]);
 
-  // Cleanup animation frame on unmount
+  // Cleanup animation frame on unmount and unregister from audio manager
   useEffect(() => {
+    // Register stop function with global audio manager
+    if (!playerIdRef.current) {
+      playerIdRef.current = registerAudioPlayer(() => {
+        // Stop function that will be called when interface state changes
+        if (sourceRef.current) {
+          try {
+            sourceRef.current.stop();
+            sourceRef.current.disconnect();
+          } catch {
+            // Already stopped
+          }
+          sourceRef.current = null;
+        }
+
+        setState("idle");
+        setCurrentTime(0);
+        pausedTimeRef.current = 0;
+
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+      });
+    }
+
     return () => {
+      // Cleanup on unmount
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+
+      // Unregister from audio manager
+      if (playerIdRef.current) {
+        unregisterAudioPlayer(playerIdRef.current);
+        playerIdRef.current = null;
+      }
     };
-  }, []);
+  }, [registerAudioPlayer, unregisterAudioPlayer]);
 
   const play = useCallback(
     async (audioBlob: Blob) => {

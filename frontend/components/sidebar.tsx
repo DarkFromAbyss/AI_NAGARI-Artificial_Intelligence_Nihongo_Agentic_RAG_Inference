@@ -1,11 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/use-theme";
 
 interface SidebarProps {
   className?: string;
+  isModelActive?: boolean;
+  onModelToggle?: (state: boolean) => void;
+  onLogoClick?: () => void;
 }
 
 // Star Icon for Logo
@@ -17,6 +21,40 @@ function StarIcon({ className }: { className?: string }) {
       fill="currentColor"
     >
       <path d="M12 2l2.4 7.4h7.6l-6 4.6 2.3 7-6.3-4.6-6.3 4.6 2.3-7-6-4.6h7.6z" />
+    </svg>
+  );
+}
+
+// Collapse Icon (Chevron Left)
+function CollapseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+// Expand Icon (Chevron Right)
+function ExpandIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="9 18 15 12 9 6" />
     </svg>
   );
 }
@@ -60,8 +98,8 @@ function VoiceIcon({ className }: { className?: string }) {
   );
 }
 
-// Quiz Icon (Question mark in circle)
-function QuizIcon({ className }: { className?: string }) {
+// Model/CPU Icon
+function ModelIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -72,28 +110,14 @@ function QuizIcon({ className }: { className?: string }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-      <path d="M12 17h.01" />
-    </svg>
-  );
-}
-
-// Vocab Icon (Book)
-function VocabIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
-      <path d="M8 7h6" />
-      <path d="M8 11h8" />
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 11a3 3 0 1 1 6 0 3 3 0 0 1-6 0Z" />
+      <path d="M9 20v-2.343a4 4 0 0 1 .172-1.08" />
+      <path d="M15 20v-2.343a4 4 0 0 0-.172-1.08" />
+      <path d="M6 9H3" />
+      <path d="M21 9h-3" />
+      <path d="M9 3v3" />
+      <path d="M15 3v3" />
     </svg>
   );
 }
@@ -162,74 +186,132 @@ interface MenuItemProps {
   label: string;
   onClick?: () => void;
   isActive?: boolean;
+  isExpanded?: boolean;
 }
 
-function MenuItem({ icon, label, onClick, isActive }: MenuItemProps) {
+function MenuItem({ icon, label, onClick, isActive, isExpanded = true }: MenuItemProps) {
   return (
     <Button
       variant="ghost"
       onClick={onClick}
+      title={!isExpanded ? label : undefined}
       className={cn(
-        "w-full h-11 justify-start gap-3 px-4 rounded-lg text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200",
+        "h-11 px-4 rounded-lg text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200",
+        isExpanded ? "w-full justify-start gap-3" : "w-11 justify-center",
         isActive && "bg-sidebar-accent text-sidebar-primary"
       )}
     >
       <span className="w-5 h-5 flex-shrink-0">{icon}</span>
-      <span className="text-sm font-medium">{label}</span>
+      {isExpanded && (
+        <span className="text-sm font-medium truncate">{label}</span>
+      )}
     </Button>
   );
 }
 
-export function Sidebar({ className }: SidebarProps) {
+export function Sidebar({ className, isModelActive = false, onModelToggle, onLogoClick }: SidebarProps) {
   const { theme, toggleTheme } = useTheme();
   const isSoftAnime = theme === "soft-anime";
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const toggleSidebar = () => {
+    setIsExpanded(!isExpanded);
+  };
+
+  const handleModelToggle = () => {
+    if (onModelToggle) {
+      onModelToggle(!isModelActive);
+    }
+  };
+
+  const handleLogoClick = () => {
+    if (onLogoClick) {
+      onLogoClick();
+    }
+  };
 
   return (
     <aside
       className={cn(
-        "flex flex-col h-full w-[250px] border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out",
+        "flex flex-col h-full bg-sidebar transition-all duration-300 ease-in-out border-r border-sidebar-border",
+        isExpanded ? "w-[250px]" : "w-[80px]",
         className
       )}
     >
-      {/* Logo Section */}
-      <div className="flex items-center gap-3 h-16 px-4 border-b border-sidebar-border">
-        <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-          <StarIcon className="w-5 h-5 text-primary-foreground" />
-        </div>
-        <span className="text-lg font-semibold text-sidebar-foreground">NARAGI</span>
+      {/* Header Section: Logo & Toggle Button */}
+      <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border gap-2">
+        {/* Logo & App Name - Clickable Navigation */}
+        <button
+          onClick={handleLogoClick}
+          title="Return to main chat interface"
+          className={cn(
+            "flex items-center gap-3 min-w-0 flex-1",
+            "rounded-lg px-2 py-1.5 -mx-2",
+            "transition-all duration-200",
+            "hover:bg-sidebar-accent/50 active:bg-sidebar-accent",
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          )}
+        >
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-sm flex-shrink-0">
+            <StarIcon className="w-5 h-5 text-primary-foreground" />
+          </div>
+          {isExpanded && (
+            <span className="text-lg font-semibold text-sidebar-foreground truncate">
+              NARAGI
+            </span>
+          )}
+        </button>
+
+        {/* Collapse/Expand Toggle Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleSidebar}
+          aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
+          className="h-8 w-8 p-0 flex-shrink-0 hover:bg-sidebar-accent"
+        >
+          {isExpanded ? (
+            <CollapseIcon className="w-4 h-4" />
+          ) : (
+            <ExpandIcon className="w-4 h-4" />
+          )}
+        </Button>
       </div>
 
-      {/* Top Menu Group */}
+      {/* Navigation Menu Group */}
       <nav className="flex-1 flex flex-col gap-1 p-3">
         <MenuItem
           icon={<BrainIcon className="w-5 h-5" />}
           label="Brain"
+          isExpanded={isExpanded}
         />
         <MenuItem
           icon={<VoiceIcon className="w-5 h-5" />}
           label="Voice"
+          isExpanded={isExpanded}
         />
         <MenuItem
-          icon={<QuizIcon className="w-5 h-5" />}
-          label="Quiz"
-        />
-        <MenuItem
-          icon={<VocabIcon className="w-5 h-5" />}
-          label="Vocab"
+          icon={<ModelIcon className="w-5 h-5" />}
+          label="Model"
+          onClick={handleModelToggle}
+          isActive={isModelActive}
+          isExpanded={isExpanded}
         />
       </nav>
 
-      {/* Bottom Menu Group */}
+      {/* Bottom Menu Group: Settings & Theme */}
       <div className="flex flex-col gap-1 p-3 border-t border-sidebar-border">
         <MenuItem
           icon={<ThemeIcon className="w-5 h-5" isSoftAnime={isSoftAnime} />}
           label="Theme"
           onClick={toggleTheme}
           isActive={isSoftAnime}
+          isExpanded={isExpanded}
         />
         <MenuItem
           icon={<SettingIcon className="w-5 h-5" />}
           label="Setting"
+          isExpanded={isExpanded}
         />
       </div>
     </aside>

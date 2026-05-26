@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { TaskbarToggle } from "@/components/taskbar-toggle";
+import { Sidebar } from "@/components/sidebar";
 import { CharacterShowcase } from "@/components/character-showcase";
 import { ChatPanel } from "@/components/chat-panel";
 import { GeminiChatInterface } from "@/components/gemini-chat-interface";
+import { stopAllActiveAudio } from "@/hooks/use-audio-manager";
 
 interface Message {
   id: string;
@@ -19,19 +20,29 @@ interface Message {
 /**
  * AppLayout Component
  * 
- * Root layout orchestrating the dual-state interface with UNIFIED chat history.
+ * Root layout orchestrating the dual-state interface with UNIFIED chat history
+ * and responsive sidebar navigation.
  * 
  * State A: Model ON (isModelActive === true)
  * - Split layout: 3D Character on left/center + Chat Panel on right
- * - Taskbar visible on far left with toggle button
+ * - Responsive Sidebar visible on far left with Brain, Voice, Model navigation
  * - Full 3D VRM model rendering with text overlay
  * - Chat history shared from parent state
  * 
  * State B: Model OFF (isModelActive === false)
  * - Unified full-width chat interface (Gemini-like)
- * - Taskbar visible on far left with toggle button
+ * - Responsive Sidebar visible on far left with navigation items
  * - Greeting centered initially, transitions to bottom input on first message
  * - Chat history shared from parent state
+ * 
+ * Sidebar Features:
+ * - Expandable/collapsible with smooth animations (250px ↔ 80px)
+ * - Logo + App name (NARAGI) in header
+ * - Brain button (placeholder)
+ * - Voice button (placeholder)
+ * - Model button (toggles 3D view)
+ * - Theme toggle and Settings buttons
+ * - Tooltips on collapsed state
  * 
  * CRITICAL FIX: Chat history is now LIFTED to this component and shared across
  * both views. When the user toggles between 3D (ChatPanel) and 2D (GeminiChatInterface),
@@ -41,8 +52,8 @@ interface Message {
  * - Single source of truth for chat history
  * 
  * Layout Structure:
- * - Taskbar (fixed left-0 w-16) - Always visible, contains toggle
- * - Main Content Area (margin-left for taskbar) - Changes based on state
+ * - Sidebar (flex, responsive width) - Always visible with navigation
+ * - Main Content Area (flex-1) - Changes based on state
  *   - State A: flex row with Character | Chat
  *   - State B: full-width unified interface
  * 
@@ -50,6 +61,7 @@ interface Message {
  * - messages: Unified chat history (SHARED across both views)
  * - setMessages: Setter for chat history
  * - displayContent: Text content for 3D space rendering
+ * - displayIntent: Intent tag for conditional rendering (FIX #2)
  * - statusVoiceText: Voice text for status badge
  * - isModelActive: Toggles between layout states (DEFAULT: false = 2D ON)
  */
@@ -64,14 +76,28 @@ export function AppLayout() {
 
   // State for multi-modal responses
   const [displayContent, setDisplayContent] = useState<string | null>(null);
+  const [displayIntent, setDisplayIntent] = useState<string | undefined>(undefined);  // FIX #2: Track intent for conditional rendering
   const [statusVoiceText, setStatusVoiceText] = useState<string | null>(null);
+
+  const handleLogoClick = () => {
+    // Stop all audio from previous state before switching to main chat
+    stopAllActiveAudio();
+    setIsModelActive(false);
+  };
+
+  const handleModelToggle = (newState: boolean) => {
+    // Stop all audio from previous state before switching interface
+    stopAllActiveAudio();
+    setIsModelActive(newState);
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
-      {/* ============ LEFT VERTICAL TASKBAR (Fixed) ============ */}
-      <TaskbarToggle
+      {/* ============ LEFT RESPONSIVE SIDEBAR ============ */}
+      <Sidebar
         isModelActive={isModelActive}
-        onToggle={setIsModelActive}
+        onModelToggle={handleModelToggle}
+        onLogoClick={handleLogoClick}
       />
 
       {/* ============ MAIN CONTENT AREA ============ */}
@@ -83,11 +109,13 @@ export function AppLayout() {
          * 
          * FIX: Now passing shared messages and setMessages from parent
          */
-        <div className="flex flex-1 overflow-hidden ml-16">
+        <div className="flex flex-1 overflow-hidden">
           {/* Center - Character Showcase with 3D text rendering */}
           <CharacterShowcase
             displayContent={displayContent}
+            displayIntent={displayIntent}
             statusVoiceText={statusVoiceText}
+            isModelActive={isModelActive}
             className="flex-1"
           />
 
@@ -97,6 +125,7 @@ export function AppLayout() {
             setMessages={setMessages}
             isModelActive={isModelActive}
             setDisplayContent={setDisplayContent}
+            setDisplayIntent={setDisplayIntent}
             setStatusVoiceText={setStatusVoiceText}
             className={cn(
               "w-[420px] border-l border-border/30",
@@ -112,7 +141,7 @@ export function AppLayout() {
          * 
          * FIX: Now passing shared messages and setMessages from parent
          */
-        <div className="flex flex-1 overflow-hidden ml-16">
+        <div className="flex flex-1 overflow-hidden">
           <GeminiChatInterface
             messages={messages}
             setMessages={setMessages}

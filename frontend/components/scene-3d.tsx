@@ -14,6 +14,16 @@ interface Scene3DProps {
   onModelError?: () => void;
   /** Display text content to render in 3D space */
   displayContent?: string | null;
+  /** 
+   * Intent tag from the message (e.g., "search", "chat", "translate").
+   * Controls conditional rendering of the text box.
+   */
+  displayIntent?: string;
+  /** 
+   * Whether the 3D model is active/visible.
+   * Acts as an override in conditional rendering logic.
+   */
+  isModelActive?: boolean;
 }
 
 /**
@@ -23,19 +33,25 @@ interface Scene3DProps {
  * Manages viewport framing to keep the model centered and in-view at all times.
  * Renders WebGL text content alongside the VRM model using Html overlay.
  * 
+ * Conditional Rendering Logic:
+ * - Text box displays if: (intent === 'search') || (!isModelActive)
+ * - This allows search results to show in 3D mode AND all content to show in 2D mode
+ * 
  * Process Flow:
  * 1. Initialize camera with optimal framing for full-body model visibility
  * 2. Setup OrbitControls for user interaction (pan/zoom/rotate)
  * 3. Configure scene lighting with anime-friendly soft setup
  * 4. Render grid floor for spatial reference
  * 5. Load and render VRM avatar model
- * 6. Conditionally render WebGLTextRenderer if displayContent provided
+ * 6. Conditionally render WebGLTextRenderer based on displayContent, displayIntent, and isModelActive
  */
 export function Scene3D({
   modelUrl,
   onModelLoad,
   onModelError,
   displayContent = null,
+  displayIntent,
+  isModelActive = true,
 }: Scene3DProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
 
@@ -104,7 +120,11 @@ export function Scene3D({
 
       {/* WebGL Text Renderer: Display content in 3D space alongside avatar */}
       {displayContent && displayContent.trim() !== "" && (
-        <WebGLTextRenderer content={displayContent} />
+        <WebGLTextRenderer 
+          content={displayContent}
+          intent={displayIntent}
+          isModelActive={isModelActive}
+        />
       )}
     </>
   );

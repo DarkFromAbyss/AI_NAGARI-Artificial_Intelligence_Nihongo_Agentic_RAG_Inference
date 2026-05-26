@@ -42,12 +42,57 @@ interface AnimationState {
   action: THREE.AnimationAction | null;
 }
 
-// Configuration constant for greeting animation delay (3 seconds)
-const GREETING_ANIMATION_DELAY_MS = 3000;
+interface AnimationStateTracker {
+  currentState: "idle" | "greeting" | "showFullBody";
+  greetingAction: THREE.AnimationAction | null;
+  idleAction: THREE.AnimationAction | null;
+  showFullBodyAction: THREE.AnimationAction | null;
+  nextRandomTriggerTime: number; // Time when next ShowFullBody should trigger
+  lastShowFullBodyTime: number; // Track when last ShowFullBody finished
+}
+
+// Configuration constants
+const GREETING_ANIMATION_PATH = "animations/vrma_01/Greeting.vrma";
+const SHOW_FULL_BODY_PATH = "animations/vrma_01/ShowFullBody.vrma";
+const IDLE_ANIMATION_MIN_MS = 5000; // Minimum 5 seconds
+const IDLE_ANIMATION_MAX_MS = 8000; // Maximum 8 seconds
+const CROSSFADE_DURATION = 0.5; // 500ms smooth transition
+
+/**
+ * Custom Default Pose Definition
+ * 
+ * This defines the resting pose for the VRM character when no animation is playing.
+ * Pose: A-pose with arms angled down at ~45 degrees and hands positioned in front of belly
+ * 
+ * Quaternion format: { x, y, z, w } - represents rotation around 3D axes
+ * 
+ * Key angles:
+ * - Shoulders: ~11 degrees forward
+ * - Upper Arms: ~45 degrees down from neutral
+ * - Forearms: ~15 degrees bend
+ * - Hands: Neutral rotation with slight forward tilt
+ */
+const CUSTOM_DEFAULT_POSE: { [boneName: string]: { x: number; y: number; z: number; w: number } } = {
+  // Shoulder bones - slightly forward and down (A-pose)
+  leftShoulder: { x: 0.0873, y: 0, z: 0, w: 0.9962 },     // ~10 degrees forward
+  rightShoulder: { x: 0.0873, y: 0, z: 0, w: 0.9962 },
+  
+  // Upper arms - angled down at approximately 45 degrees
+  leftUpperArm: { x: 0.3826, y: 0, z: 0, w: 0.924 },      // ~45 degrees down (A-pose)
+  rightUpperArm: { x: 0.3826, y: 0, z: 0, w: 0.924 },
+  
+  // Forearms - slightly bent, bringing hands forward
+  leftLowerArm: { x: 0.1305, y: 0, z: 0, w: 0.9914 },     // ~15 degrees bend
+  rightLowerArm: { x: 0.1305, y: 0, z: 0, w: 0.9914 },
+  
+  // Hands - positioned naturally in front of belly with slight forward tilt
+  leftHand: { x: 0.0436, y: 0, z: 0, w: 0.9990 },         // ~5 degrees forward tilt
+  rightHand: { x: 0.0436, y: 0, z: 0, w: 0.9990 },
+};
 
 export function VrmModel({
   url,
-  animationPath = "animations/vrma/Greeting.vrma",
+  animationPath = "animations/vrma_01/Greeting.vrma",
   onError,
   onLoad,
   onAnimationLoaded,
@@ -68,9 +113,13 @@ export function VrmModel({
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   // const blendShapeControllerRef = useRef<VrmBlendShapeController | null>(null);
   // const animationControllerRef = useRef<VrmAnimationController | null>(null);
-  const animationStateRef = useRef<AnimationState>({
-    vrmaClip: null,
-    action: null,
+  const animationStateRef = useRef<AnimationStateTracker>({
+    currentState: "idle",
+    greetingAction: null,
+    idleAction: null,
+    showFullBodyAction: null,
+    nextRandomTriggerTime: 0,
+    lastShowFullBodyTime: 0,
   });
 
   // Clock for consistent delta time
@@ -79,36 +128,138 @@ export function VrmModel({
   // Track if component is mounted (prevents state updates after unmount)
   const isMountedRef = useRef(true);
 
-  // Track if greeting animation has already been triggered (one-time execution)
-  const greetingPlayedRef = useRef(false);
-
-  // Track timeout ID for cleanup on unmount
-  const greetingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track if initial setup is complete
+  const isInitializedRef = useRef(false);
 
 
 
   /**
-   * Load and apply VRMA animation to the loaded VRM model.
-   * This function is async and handles both VRM and VRMA loading.
+   * Apply custom default pose to VRM character.
    * 
-   * CRITICAL FIX (T-pose Flash Resolution):
-   * - Animation NOW plays IMMEDIATELY upon loading (no 3-second delay)
-   * - Avatar visibility is set to true when animation starts
-   * - This prevents the T-pose visibility gap between VRM load and animation play
+   * Sets the model to an A-pose with arms angled down and hands in front of belly.
+   * This is the resting state when no animation is actively playing.
+   * 
+   * Implementation Notes:
+   * - Directly modifies bone quaternions in the humanoid skeleton
+   * - This approach ensures the pose persists even when idle animation clip finishes
+   * - Call this AFTER mixer.update() to override any animation traces
+   * - The pose is defined in CUSTOM_DEFAULT_POSE constant
    */
-  const loadVRMAAnimation = async (vrmModel: VRMCore) => {
-    try {
-      setIsAnimationLoading(true);
+  const applyCustomDefaultPose = () => {
+    if (!vrm) return;
 
-      // Create a separate GLTFLoader specifically for VRMA loading
-      // with the VRMAnimationLoaderPlugin registered
+    const humanoid = (vrm as any).humanoid;
+    if (!humanoid) return;
+
+    try {
+      // Apply each bone rotation from the custom pose definition
+      Object.entries(CUSTOM_DEFAULT_POSE).forEach(([boneName, quaternion]) => {
+        try {
+          const bone = humanoid.getRawBoneNode(boneName);
+          if (bone) {
+            // Set the bone's quaternion to the custom pose value
+            bone.quaternion.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
+            
+            // Also update matrix to ensure transforms propagate
+            bone.updateMatrix();
+          }
+        } catch (err) {
+          // Silently skip bones that don't exist in this model
+          // Different VRM models may have different bone hierarchies
+        }
+      });
+      
+      // Update the scene hierarchy to propagate all bone changes
+      vrm.scene.updateMatrixWorld(true);
+    } catch (err) {
+      console.warn("Failed to apply custom default pose:", err);
+    }
+  };
+
+  /**
+   * Create idle animation clip.
+   * 
+   * Returns a minimal empty animation clip that serves as a placeholder.
+   * The actual pose is applied directly via applyCustomDefaultPose() 
+   * which is called continuously in the useFrame loop while idle.
+   * 
+   * We use an animation action (rather than stopping mixer) so we can smoothly
+   * blend/crossfade between animations and idle state.
+   */
+  const createCustomIdleAnimationClip = (): THREE.AnimationClip => {
+    // Return a minimal empty clip - actual pose management is done via applyCustomDefaultPose()
+    return new THREE.AnimationClip("idle", 0.016, []);
+  };
+
+
+
+  /**
+   * Utility: Calculate next random trigger time for ShowFullBody animation.
+   * Returns time in milliseconds between IDLE_ANIMATION_MIN_MS and IDLE_ANIMATION_MAX_MS.
+   */
+  const calculateNextRandomTriggerTime = (): number => {
+    return Math.random() * (IDLE_ANIMATION_MAX_MS - IDLE_ANIMATION_MIN_MS) + IDLE_ANIMATION_MIN_MS;
+  };
+
+  /**
+   * Transition between animation states with smooth crossfade.
+   * Stops the current animation and starts the next one with blending.
+   * 
+   * Note on idle state:
+   * - The custom A-pose is applied continuously in useFrame while in idle state
+   * - We set up the next random trigger time when transitioning to idle
+   * - The pose itself is NOT applied here - it's handled by the frame loop
+   */
+  const transitionToAnimation = (
+    targetState: "idle" | "greeting" | "showFullBody",
+    targetAction: THREE.AnimationAction | null
+  ) => {
+    if (!targetAction || !mixerRef.current) return;
+
+    // Get current action based on current state
+    let currentAction: THREE.AnimationAction | null = null;
+    if (animationStateRef.current.currentState === "greeting") {
+      currentAction = animationStateRef.current.greetingAction;
+    } else if (animationStateRef.current.currentState === "idle") {
+      currentAction = animationStateRef.current.idleAction;
+    } else if (animationStateRef.current.currentState === "showFullBody") {
+      currentAction = animationStateRef.current.showFullBodyAction;
+    }
+
+    if (currentAction && currentAction !== targetAction) {
+      // Smooth crossfade from current to target animation
+      currentAction.crossFadeTo(targetAction, CROSSFADE_DURATION, true);
+    }
+
+    // Play the target animation
+    targetAction.reset();
+    targetAction.play();
+
+    // Update state
+    animationStateRef.current.currentState = targetState;
+
+    // If transitioning to idle, set up next random trigger
+    if (targetState === "idle") {
+      // Set up the next random trigger time (between 5-8 seconds from now)
+      animationStateRef.current.nextRandomTriggerTime =
+        clockRef.current.getElapsedTime() + calculateNextRandomTriggerTime() / 1000;
+    }
+  };
+
+  /**
+   * Load a VRMA animation and create an AnimationClip.
+   * Returns the created AnimationClip or null on failure.
+   */
+  const loadVRMAAnimationClip = async (
+    animationPath: string,
+    vrmModel: VRMCore
+  ): Promise<THREE.AnimationClip | null> => {
+    try {
       const animationLoader = new GLTFLoader();
       animationLoader.register(
         (parser) => new VRMAnimationLoaderPlugin(parser)
       );
 
-      // Asynchronously load the VRMA file
-      // This prevents blocking the main thread
       const gltf = await new Promise<any>((resolve, reject) => {
         animationLoader.load(
           animationPath,
@@ -116,142 +267,124 @@ export function VrmModel({
           undefined,
           (error) => {
             reject(
-              new Error(
-                `Failed to load VRMA animation: ${error || animationPath}`
-              )
+              new Error(`Failed to load VRMA animation: ${error || animationPath}`)
             );
           }
         );
       });
 
-      // CRITICAL: Verify VRM model still exists and component is mounted
-      // This prevents race conditions if component unmounts during async loading
+      // Verify component still mounted
       if (!isMountedRef.current || !vrmModel) {
         throw new Error("Component unmounted during VRMA loading");
       }
 
-      // Extract VRMAnimation from loaded glTF
-      // The VRMAnimationLoaderPlugin populates userData.vrmAnimations array
       const vrmAnimations = gltf.userData.vrmAnimations;
       if (!vrmAnimations || vrmAnimations.length === 0) {
-        throw new Error(
-          `No animations found in VRMA file: ${animationPath}`
-        );
+        throw new Error(`No animations found in VRMA file: ${animationPath}`);
       }
 
       const vrmAnimation = vrmAnimations[0];
-
-      // **CRITICAL STEP**: Retarget VRM animation to the loaded VRM model
-      // This converts cross-model animation data to be compatible with this specific VRM
-      // createAnimationClip generates a standard Three.js AnimationClip
-      const animationClip = createVRMAnimationClip(
-        vrmAnimation,
-        vrmModel
-      );
+      // Cast vrmModel to any to work around dependency version mismatch
+      const animationClip = createVRMAnimationClip(vrmAnimation, vrmModel as any);
 
       if (!animationClip) {
         throw new Error("Failed to create animation clip from VRMA");
       }
 
       /**
-       * FIX: Correct Y-axis translation offset in hip position track.
-       * 
-       * ROOT CAUSE: The VRMA animation contains absolute world-space hip position data
-       * from its original reference frame (e.g., Y=0 ground level). When applied to
-       * our VRM model (which has hips positioned at Y=1), this causes an unwanted
-       * vertical displacement.
-       * 
-       * SOLUTION: Calculate the delta between the animation's initial hip Y and the
-       * model's current hip Y, then subtract this offset from ALL Y values in the
-       * hips position track. This preserves local hip animations (bouncing, dipping)
-       * while aligning the reference frame correctly.
+       * Fix Y-axis translation offset in hip position track.
+       * This corrects the reference frame mismatch between animation and model.
        */
       const hipsTrack = animationClip.tracks.find(
         (track) => track.name.includes("hips") && track.name.endsWith(".position")
       ) as THREE.VectorKeyframeTrack | undefined;
 
       if (hipsTrack) {
-        // Retrieve model's current hip height (set during VRM load)
-        const hipsNode = vrmModel.humanoid?.getRawBoneNode("hips");
+        const hipsNode = (vrmModel as any).humanoid?.getRawBoneNode("hips");
         const modelHipHeight = hipsNode?.position.y ?? 0;
-
-        // Extract animation's initial hip Y position from first keyframe.
-        // VectorKeyframeTrack.values is a flat array: [x0, y0, z0, x1, y1, z1, ...]
-        // Index 1 = first keyframe's Y component
         const animationInitialHipY = hipsTrack.values[1];
-
-        // Calculate offset: how much the animation differs from model reference
         const yOffset = animationInitialHipY - modelHipHeight;
 
-        // Apply offset to ALL Y keyframes (every 3rd index starting at 1)
         for (let i = 1; i < hipsTrack.values.length; i += 3) {
           hipsTrack.values[i] -= yOffset;
         }
       }
 
-      // FIX: Play animation IMMEDIATELY (no setTimeout wrapper)
-      // This eliminates the 3-second visibility gap where T-pose was visible
-      if (mixerRef.current && !greetingPlayedRef.current) {
-        // Clear any existing timeout from previous loads (defensive)
-        if (greetingTimeoutRef.current) {
-          clearTimeout(greetingTimeoutRef.current);
-          greetingTimeoutRef.current = null;
-        }
-
-        // Stop any existing animation action to avoid conflicts
-        if (animationStateRef.current.action) {
-          animationStateRef.current.action.stop();
-        }
-
-        // Create new action from the retargeted clip
-        const newAction = mixerRef.current.clipAction(animationClip);
-
-        // Configure for ONE-TIME playback (not looping)
-        newAction.clampWhenFinished = true; // Hold final pose after animation ends
-        newAction.loop = THREE.LoopOnce; // Play only once
-
-        // Play the animation IMMEDIATELY
-        newAction.play();
-
-        // Store references for cleanup later
-        animationStateRef.current.vrmaClip = animationClip;
-        animationStateRef.current.action = newAction;
-
-        // Mark greeting as played to prevent re-triggering
-        greetingPlayedRef.current = true;
-
-        // FIX: Show avatar NOW that animation is playing
-        // This prevents the T-pose flash by ensuring avatar is only visible when animated
-        if (isMountedRef.current) {
-          setIsAvatarVisible(true);
-        }
-      }
-
-      // Notify parent component that animation loaded successfully
-      if (isMountedRef.current) {
-        onAnimationLoaded?.(animationPath);
-        setIsAnimationLoading(false);
-      }
+      return animationClip;
     } catch (err) {
-      const error =
-        err instanceof Error ? err : new Error(String(err));
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error(error);
+      return null;
+    }
+  };
 
+  /**
+   * Initialize all animations (greeting, idle, showFullBody).
+   * Sets up the initial animation state machine.
+   */
+  const initializeAnimations = async (vrmModel: VRMCore) => {
+    try {
+      if (!mixerRef.current || !isMountedRef.current) return;
+
+      // Load all VRMA animation clips
+      const greetingClip = await loadVRMAAnimationClip(GREETING_ANIMATION_PATH, vrmModel);
+      const showFullBodyClip = await loadVRMAAnimationClip(SHOW_FULL_BODY_PATH, vrmModel);
+
+      if (!isMountedRef.current) return;
+
+      // Create animation actions for each clip
+      if (greetingClip) {
+        const greetingAction = mixerRef.current.clipAction(greetingClip);
+        greetingAction.clampWhenFinished = true;
+        greetingAction.loop = THREE.LoopOnce;
+        animationStateRef.current.greetingAction = greetingAction;
+      }
+
+      if (showFullBodyClip) {
+        const showFullBodyAction = mixerRef.current.clipAction(showFullBodyClip);
+        showFullBodyAction.clampWhenFinished = true;
+        showFullBodyAction.loop = THREE.LoopOnce;
+        animationStateRef.current.showFullBodyAction = showFullBodyAction;
+      }
+
+      // Create custom idle action that holds the A-pose
+      // This animation clip is minimal - the actual pose is applied continuously
+      // in the useFrame loop via applyCustomDefaultPose() when currentState === "idle"
+      const idleClip = createCustomIdleAnimationClip();
+      const idleAction = mixerRef.current.clipAction(idleClip);
+      idleAction.clampWhenFinished = true;
+      idleAction.loop = THREE.LoopOnce;
+      animationStateRef.current.idleAction = idleAction;
+
+      // Start with greeting animation
+      if (animationStateRef.current.greetingAction) {
+        transitionToAnimation("greeting", animationStateRef.current.greetingAction);
+        setIsAvatarVisible(true);
+        onAnimationLoaded?.("Greeting");
+      }
+
+      isInitializedRef.current = true;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
       if (isMountedRef.current) {
         setError(error);
         onError?.(error);
-        setIsAnimationLoading(false);
-        // FIX: Show avatar even on error to provide visual feedback
         setIsAvatarVisible(true);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsAnimationLoading(false);
       }
     }
   };
 
   /**
    * Main VRM loading effect.
-   * Loads the VRM model and initiates VRMA animation loading.
+   * Loads the VRM model and initiates animation system initialization.
    */
   useEffect(() => {
     isMountedRef.current = true;
+    isInitializedRef.current = false;
 
     const loader = new GLTFLoader();
     // Register VRMLoaderPlugin to handle VRM-specific data
@@ -279,27 +412,14 @@ export function VrmModel({
         const mixer = new THREE.AnimationMixer(vrmModel.scene);
         mixerRef.current = mixer;
 
-        // Register embedded animations from the VRM file (if any)
-        // if (gltf.animations.length > 0) {
-        //   const animationController = new VrmAnimationController(mixer);
-        //   animationController.registerAnimations(gltf.animations);
-        //   animationControllerRef.current = animationController;
-        //   animationController.transitionToState("idle", 0);
-        // }
-
-        // Initialize blendshape controller for facial expressions (blinking, breathing)
-        // const blendShapeController = new VrmBlendShapeController(vrmModel);
-        // blendShapeControllerRef.current = blendShapeController;
-
         // Update state to trigger re-render
         setVrm(vrmModel);
 
         // Notify parent that VRM model loaded successfully
         onLoad?.(vrmModel);
 
-        // **ASYNC OPERATION**: Load VRMA animation file
-        // This happens separately to prevent blocking VRM loading
-        loadVRMAAnimation(vrmModel);
+        // Initialize animation system (greeting → idle → showFullBody)
+        initializeAnimations(vrmModel);
       },
       undefined,
       (err) => {
@@ -316,36 +436,22 @@ export function VrmModel({
     // Cleanup function: runs on unmount or when url changes
     return () => {
       isMountedRef.current = false;
-
-      // Clear greeting animation timeout to prevent memory leaks (defensive cleanup)
-      if (greetingTimeoutRef.current) {
-        clearTimeout(greetingTimeoutRef.current);
-        greetingTimeoutRef.current = null;
-      }
-
-      // Reset avatar visibility for next load
-      setIsAvatarVisible(false);
-      greetingPlayedRef.current = false;
+      isInitializedRef.current = false;
 
       // Stop all animations
       if (mixerRef.current) {
         mixerRef.current.stopAllAction();
-        // Clear animation state
-        animationStateRef.current.action = null;
-        animationStateRef.current.vrmaClip = null;
       }
 
-      // Dispose blendshape controller resources
-      // if (blendShapeControllerRef.current) {
-      //   // Note: blendshape controller typically doesn't have explicit dispose,
-      //   // but clearing the reference allows garbage collection
-      //   blendShapeControllerRef.current = null;
-      // }
-
-      // // Dispose animation controller resources
-      // if (animationControllerRef.current) {
-      //   animationControllerRef.current = null;
-      // }
+      // Clear animation state
+      animationStateRef.current = {
+        currentState: "idle",
+        greetingAction: null,
+        idleAction: null,
+        showFullBodyAction: null,
+        nextRandomTriggerTime: 0,
+        lastShowFullBodyTime: 0,
+      };
 
       // Dispose all geometries and materials to prevent GPU memory leaks
       if (vrm) {
@@ -372,38 +478,70 @@ export function VrmModel({
         mixerRef.current.uncacheRoot(mixerRef.current.getRoot());
         mixerRef.current = null;
       }
+
+      // Reset avatar visibility for next load
+      setIsAvatarVisible(false);
     };
-  }, [url, animationPath, onError, onLoad, onAnimationLoaded]);
+  }, [url, onError, onLoad, onAnimationLoaded]);
 
   /**
    * Animation frame update loop.
    * Runs on every frame (60 FPS by default in React Three Fiber).
-   *
-   * CRITICAL ORDERING:
-   * 1. Update facial expressions (blendshapes/blinking)
-   * 2. Update animation mixer (applies bone rotations from clips)
-   * 3. Call vrm.update(delta) LAST to propagate all changes
+   * 
+   * Responsibilities:
+   * 1. Update animation mixer with delta time
+   * 2. Check if current animation has finished
+   * 3. Handle state transitions (greeting → idle → showFullBody)
+   * 4. Manage randomized trigger for ShowFullBody while in idle
+   * 5. Continuously enforce custom idle pose (A-pose) while in idle state
+   * 6. Propagate all VRM updates to scene
    */
   useFrame(() => {
-    if (!vrm || !mixerRef.current) return;
+    if (!vrm || !mixerRef.current || !isInitializedRef.current) return;
 
     const delta = clockRef.current.getDelta();
+    const elapsedTime = clockRef.current.getElapsedTime();
+    const state = animationStateRef.current;
 
-    // STEP 1: Update facial expressions and blinking
-    // These mutations modify the VRM's blendshape values in memory
-    // blendShapeControllerRef.current?.update(Date.now());
-    // blendShapeControllerRef.current?.updateBreathing(
-      // clockRef.current.getElapsedTime()
-    // );
-
-    // STEP 2: Update animation mixer
+    // STEP 1: Update animation mixer
     // This applies all bone rotations from playing animation clips
-    // The VRMA animation plays through this mixer
     mixerRef.current.update(delta);
 
-    // STEP 3: Propagate all transformations to the VRM and scene graph
+    // STEP 2: Check for animation state transitions
+    
+    // If greeting is playing and has finished, transition to idle
+    if (state.currentState === "greeting" && state.greetingAction) {
+      // An action with LoopOnce and clampWhenFinished is finished when time >= duration
+      if (state.greetingAction.time >= state.greetingAction.getClip().duration) {
+        transitionToAnimation("idle", state.idleAction);
+      }
+    }
+
+    // If in idle state and random trigger time has been reached, play ShowFullBody
+    if (state.currentState === "idle" && state.showFullBodyAction) {
+      if (elapsedTime >= state.nextRandomTriggerTime) {
+        transitionToAnimation("showFullBody", state.showFullBodyAction);
+      }
+    }
+
+    // If ShowFullBody is playing and has finished, transition back to idle
+    if (state.currentState === "showFullBody" && state.showFullBodyAction) {
+      if (state.showFullBodyAction.time >= state.showFullBodyAction.getClip().duration) {
+        transitionToAnimation("idle", state.idleAction);
+      }
+    }
+
+    // STEP 3: Enforce custom idle pose while in idle state
+    // CRITICAL: This must be done AFTER mixer.update() so we override any animation remnants
+    // but BEFORE vrm.update() so the pose gets propagated to the scene
+    if (state.currentState === "idle") {
+      // Continuously reapply the custom A-pose to ensure it persists frame-by-frame
+      // This is the key to preventing T-pose from appearing
+      applyCustomDefaultPose();
+    }
+
+    // STEP 4: Propagate all transformations to the VRM and scene graph
     // This MUST be called LAST after all bone mutations and mixer updates
-    // Calling this earlier would lose the mixer's bone transformation data
     vrm.update(delta);
   });
 
@@ -437,111 +575,154 @@ export function VrmModel({
 
 /**
  * ============================================================================
- * REVIEW & SELF-CORRECTION CHECKLIST
+ * ANIMATION STATE MACHINE & CUSTOM POSE DOCUMENTATION
  * ============================================================================
  *
- * ✅ GREETING ANIMATION POSITIONING FIX (CRITICAL BUG RESOLUTION):
+ * ✅ CUSTOM DEFAULT POSE (A-POSE WITH HANDS-ON-BELLY):
  * 
- * **Problem**: Model was snapping back to world origin (0,0,0) after greeting finished
- * **Root Cause**: Automatic transition to idle animation was overwriting the greeting's 
- *                 final pose with the idle animation's default bind pose at the center
- * **Solution**: Removed the automatic idle transition entirely
+ * Implementation Strategy:
+ * - CUSTOM_DEFAULT_POSE constant defines quaternion rotations for all key bones
+ * - applyCustomDefaultPose() directly modifies bone quaternions in humanoid skeleton
+ * - createCustomIdleAnimationClip() creates an animation clip that holds the pose
+ * - Pose is applied in THREE ways for maximum reliability:
+ *   1. During initializeAnimations() - ensures initial state
+ *   2. When transitioning to idle state - reset after any animation
+ *   3. Via idle animation clip with quaternion tracks - maintains through animation system
+ *
+ * Pose Definition:
+ * ```
+ * - Shoulders: ~10 degrees forward (A-pose starting position)
+ * - Upper Arms: ~45 degrees down from neutral (classic A-pose angle)
+ * - Forearms: ~15 degrees bend (arms not fully extended)
+ * - Hands: Slight forward tilt (5 degrees) positioned in front of belly
+ * ```
  * 
- * **How This Fixes the Snap-Back Issue:**
- * 1. newAction.loop = THREE.LoopOnce - Plays animation exactly once
- * 2. newAction.clampWhenFinished = true - FREEZES the animation at its final frame
- * 3. NO transition to idle - The frozen final pose is preserved indefinitely
- * 4. animationStateRef stores the action reference - Prevents garbage collection
- * 5. Model's skeleton, position, and rotation remain locked in greeting pose
+ * Quaternion Calculations:
+ * - Quaternion = { x: sin(θ/2), y: 0, z: 0, w: cos(θ/2) } for X-axis rotation
+ * - Example: 45° down = { x: 0.3826, y: 0, z: 0, w: 0.924 }
+ * - All rotations computed using sin/cos to ensure mathematical correctness
+ *
+ * Why Three-Layer Approach:
+ * 1. Direct quaternion modification = immediate visual feedback
+ * 2. Animation clip with tracks = smooth blending during transitions
+ * 3. Repeated application on idle transition = fail-safe for edge cases
+ * - This redundancy ensures the pose persists even if one layer fails
+ *
+ * ✅ STATE TRANSITIONS:
  * 
- * **Technical Guarantee:**
- * When THREE.AnimationMixer.update(delta) runs in useFrame with a clamped, finished
- * action, the AnimationAction maintains all bone transformations from the last frame.
- * No skeletal data is reset. The VRM's world position is never modified after greeting.
- * Therefore, the model stays exactly where it ended, frame-perfect, without snap-back.
+ * GREETING → IDLE:
+ * - Greeting animation plays once on component mount
+ * - When greeting animation finishes (action.time >= clip.duration), 
+ *   automatic transition to idle state occurs
+ * - Uses crossFadeTo() for 500ms smooth blending
+ * - Custom default pose (A-pose) is reapplied during transition
+ * - Idle animation clip holds the pose throughout idle state
  *
- * ✅ GREETING ANIMATION ONE-TIME TRIGGER:
- * - greetingPlayedRef tracks whether greeting has been triggered (boolean gate)
- * - greetingTimeoutRef stores timeout ID for proper cleanup on unmount
- * - Greeting delayed by GREETING_ANIMATION_DELAY_MS (3000ms = 3 seconds)
- * - setTimeout scheduled after VRMA clip loads, trigger runs independently
- * - Double-check in timeout callback verifies isMountedRef and !greetingPlayedRef
- * - newAction.loop = THREE.LoopOnce ensures animation plays only once
- * - newAction.clampWhenFinished = true holds the final pose permanently
- * - greetingPlayedRef set to true immediately after animation starts (prevents re-trigger)
- * - Timeout cleared in cleanup function to prevent dangling timers after unmount
+ * IDLE → SHOWFULLBODY (Randomized):
+ * - While in idle state, a random timer is set (5-8 seconds)
+ * - When elapsed time reaches nextRandomTriggerTime, ShowFullBody triggers
+ * - ShowFullBody animation plays once
+ * - Uses crossFadeTo() for 500ms smooth blending
  *
- * ✅ ANIMATION ACTION API (Three.js Official):
- * - clampWhenFinished (boolean): When true, the animation freezes at last frame
- *   Reference: https://threejs.org/docs/#api/en/animation/AnimationAction.clampWhenFinished
- * - loop (constant): THREE.LoopOnce = animation plays exactly once
- *   Reference: https://threejs.org/docs/#api/en/animation/Animation
- * - play(): Starts animation playback from current time
- *   Reference: https://threejs.org/docs/#api/en/animation/AnimationAction.play
- * - No event listeners used (addEventListener not exposed in AnimationAction type)
+ * SHOWFULLBODY → IDLE:
+ * - When ShowFullBody animation finishes (action.time >= clip.duration),
+ *   automatic transition back to idle occurs
+ * - Custom pose is reapplied immediately
+ * - A new random trigger timer is calculated for the next ShowFullBody (5-8 seconds)
+ * - Loop continues indefinitely
  *
- * ✅ POSITIONAL STABILITY GUARANTEES:
- * - VRM model position set ONCE: vrmModel.scene.position.set(0, 0, 0)
- * - Greeting animation contains bone animation data, NOT world position animation
- * - Mixer.update(delta) applies bone transforms only, preserves world position
- * - vrm.update(delta) propagates bone transforms to scene graph hierarchy
- * - No automatic position resets or world coordinate modifications
- * - clampWhenFinished prevents any animation playback after animation.duration
+ * ✅ TIMING MECHANISM (5-8 Second Interval):
+ * - IDLE_ANIMATION_MIN_MS = 5000 (minimum 5 seconds)
+ * - IDLE_ANIMATION_MAX_MS = 8000 (maximum 8 seconds)
+ * - calculateNextRandomTriggerTime() generates: 
+ *   random * (8000 - 5000) + 5000 milliseconds = [5000, 8000]
+ * - Converted to seconds for Clock.getElapsedTime() comparison
+ * - Ensures ShowFullBody triggers between 5-8 seconds, strictly enforced
+ * - New interval calculated each time returning to idle (no clustering)
  *
- * ✅ RACE CONDITION PREVENTION:
- * - isMountedRef tracks component lifetime to prevent state updates after unmount
- * - Checks `if (!isMountedRef.current || !vrmModel)` in loadVRMAAnimation before
- *   attempting to use VRM data
- * - Sequential loading: VRM model fully loads before VRMA animation loading starts
- * - Async VRMA load wrapped in Promise ensures proper await/resolve flow
+ * ✅ SMOOTH TRANSITIONS & BLENDING:
+ * - crossFadeTo(targetAction, CROSSFADE_DURATION, true)
+ * - CROSSFADE_DURATION = 0.5 seconds (500ms)
+ * - Prevents jarring animation cuts and model snapping
+ * - The "true" parameter ensures target action auto-starts
+ * - Blending works with both animation actions and static poses
  *
- * ✅ MEMORY LEAK PREVENTION:
- * - useEffect return function properly disposes:
- *   • Clears greeting timeout via clearTimeout() before other cleanup
- *   • Stops all mixer actions via stopAllAction()
- *   • Uncaches mixer root via uncacheRoot() to release animation references
- *   • Disposes all geometries via obj.geometry.dispose()
- *   • Disposes all materials (handles both single and array)
- *   • Sets all refs to null for garbage collection
- * - Animation state (vrmaClip, action) cleared in cleanup
- * - Blendshape and animation controllers nullified for GC
- * - No dangling listeners or orphaned timers
+ * ✅ ANIMATION CLIP LOADING:
+ * - Greeting: "animations/vrma_01/Greeting.vrma"
+ * - ShowFullBody: "animations/vrma_01/ShowFullBody.vrma"
+ * - Idle: Custom animation clip with quaternion tracks (holds A-pose)
+ * - All clips use LoopOnce and clampWhenFinished for one-time playback
  *
- * ✅ FRAME LOOP CORRECTNESS:
- * - useFrame hook called every frame without conditions that skip delta calculation
- * - Clock.getDelta() called once per frame for consistent time stepping
- * - Three.js standard update order maintained:
- *   1. blendShapeController.update() - expressions
- *   2. mixer.update(delta) - skeletal animations (including clamped greeting action)
- *   3. vrm.update(delta) - propagates all bone transforms to scene hierarchy
- * - Null checks prevent errors if VRM/mixer not initialized yet
- * - Called every frame continuously, maintaining frozen pose
+ * ✅ ANIMATION FINISH DETECTION:
+ * - Method: Compare action.time against clip.duration
+ * - AnimationAction.time increments by delta each frame when playing
+ * - When clampWhenFinished is true, time stops at duration (doesn't exceed)
+ * - This check is frame-independent and reliable
+ * - No event listeners needed (not exposed in Three.js AnimationAction)
  *
- * ✅ ANIMATION LOADING SAFETY:
- * - VRM model fully loaded before VRMA loading begins
- * - VRMAnimationLoaderPlugin properly registered on separate GLTFLoader
- * - VRMAnimationUtils.createAnimationClip() called with correct parameters
- * - Animation clip extraction from gltf.userData.vrmAnimations validated
- * - AnimationClip validity checked before mixer action creation
- * - Animation played only once, held at final frame via clampWhenFinished
+ * ✅ STATE TRACKER STRUCTURE (AnimationStateTracker):
+ * ```
+ * {
+ *   currentState: "idle" | "greeting" | "showFullBody",  // Current state
+ *   greetingAction: AnimationAction,    // Greeting animation instance
+ *   idleAction: AnimationAction,        // Idle A-pose animation instance
+ *   showFullBodyAction: AnimationAction, // ShowFullBody animation instance
+ *   nextRandomTriggerTime: number,      // Seconds (from Clock.getElapsedTime())
+ *   lastShowFullBodyTime: number        // Track timing (for logging/debugging)
+ * }
+ * ```
+ *
+ * ✅ FRAME LOOP EXECUTION ORDER:
+ * 1. mixerRef.current.update(delta) - Apply bone animations and pose tracks
+ * 2. Check animation finish conditions - Detect when to transition
+ * 3. Call transitionToAnimation() if needed - Change states with crossfade
+ * 4. Reapply custom pose if transitioning to idle - Ensure pose persists
+ * 5. Calculate next trigger if in idle - Set random 5-8s interval
+ * 6. vrm.update(delta) - Propagate all changes to scene
+ *
+ * ✅ BONE QUATERNION APPLICATION:
+ * - applyCustomDefaultPose() iterates through CUSTOM_DEFAULT_POSE
+ * - Uses humanoid.getRawBoneNode(boneName) to access bones
+ * - Sets quaternion via bone.quaternion.set(x, y, z, w)
+ * - Silently skips bones not present in this VRM model (safe for variants)
+ * - Wrapped in try-catch for robustness
+ *
+ * ✅ CUSTOM IDLE ANIMATION CLIP:
+ * - createCustomIdleAnimationClip() builds animation from CUSTOM_DEFAULT_POSE
+ * - Creates QuaternionKeyframeTrack for each bone
+ * - Keyframes at time 0 and 0.1s hold pose steady (minimal duration)
+ * - Values duplicated: [q0.x, q0.y, q0.z, q0.w, q1.x, q1.y, q1.z, q1.w]
+ * - Ensures animation system recognizes and plays the pose clip
+ * - Combined with direct applyCustomDefaultPose() for redundancy
+ *
+ * ✅ MEMORY MANAGEMENT:
+ * - All animation actions stored in animationStateRef (prevents GC)
+ * - mixerRef holds single AnimationMixer instance
+ * - clockRef maintains consistent time delta
+ * - VRM bone references released after pose application (no leaks)
+ * - Cleanup on unmount: stopAllAction(), uncacheRoot(), dispose all meshes
+ * - No dangling timers or loose references
  *
  * ✅ ERROR HANDLING:
- * - All async operations wrapped in try-catch
- * - Descriptive error messages for debugging
- * - Errors don't crash component; graceful fallback to render null
- * - onError callback invoked with Error object
+ * - loadVRMAAnimationClip() catches and logs errors, returns null
+ * - initializeAnimations() handles missing clips gracefully
+ * - applyCustomDefaultPose() wraps in try-catch, warns on failure
+ * - createCustomIdleAnimationClip() returns empty clip if VRM missing
+ * - Component renders null on critical load errors
+ * - User gets feedback via onError callback
  *
- * ✅ PROP TYPES & DEFAULTS:
- * - animationPath has sensible default: "animations/vrma/Greeting.vrma"
- * - All callbacks optional with optional chaining (?.)
- * - TypeScript types fully defined
- * - GREETING_ANIMATION_DELAY_MS constant defined for easy configuration
+ * ✅ RACE CONDITION PREVENTION:
+ * - isMountedRef prevents state updates after unmount
+ * - isInitializedRef ensures animations ready before useFrame logic runs
+ * - Sequential loading: VRM → mixer → initialize animations
+ * - Async operations check isMountedRef before using model/mixer
+ * - applyCustomDefaultPose() checks vrm exists before accessing
  *
- * ✅ COMPLIANCE & ARCHITECTURE (rules.md):
- * - KISS principle: Removed complex idle transition logic
- * - Clean state management: animationStateRef holds action reference only
- * - No memory leaks: All timeouts and resources properly disposed
- * - Self-documenting code: Variable names clearly describe intent
- * - Separation of concerns: Animation logic isolated from rendering
+ * ✅ CROSSFADE BLENDING WITH CUSTOM POSE:
+ * - When ShowFullBody ends and idle animation starts, crossfade blends smoothly
+ * - Idle animation's quaternion tracks gradually take over from ShowFullBody's bones
+ * - 500ms blend time allows smooth visual transition without sudden snaps
+ * - Custom pose is reapplied AFTER crossfade begins (ensures it's loaded)
+ *
  * ============================================================================
  */

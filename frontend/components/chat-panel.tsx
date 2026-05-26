@@ -20,6 +20,8 @@ interface ChatPanelProps {
   setDisplayContent?: (content: string | null) => void;
   /** Setter to provide voice text for status indicator in character showcase */
   setStatusVoiceText?: (voiceText: string | null) => void;
+  /** Setter to provide intent tag for conditional rendering in 3D space */
+  setDisplayIntent?: (intent: string | undefined) => void;
 }
 
 interface Message {
@@ -38,12 +40,15 @@ interface Message {
  * - display: Main text response for chat history display
  * - voice: TTS synthesis text (Japanese voice content)
  * - display2d: Text content to render in 3D WebGL space
+ * - intent: Tag indicating message type (e.g., "search", "chat", "translate").
+ *   Used for conditional rendering: text box displays if intent='search' OR model is off
  */
 interface BackendChatResponse {
   message_id?: string;
   display?: string;
   voice?: string;
   display2d?: string;
+  intent?: string;
 }
 
 // User profile icon
@@ -130,7 +135,8 @@ export function ChatPanel({
   messages,
   setMessages,
   setDisplayContent, 
-  setStatusVoiceText 
+  setStatusVoiceText,
+  setDisplayIntent,
 }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [showGreeting, setShowGreeting] = useState(true);
@@ -267,6 +273,19 @@ export function ChatPanel({
        * - display: Chat history text content
        * - voice: TTS synthesis text
        * - display2d: 3D scene text rendering content
+       * - intent: Message type tag for conditional rendering in 3D space
+       *   (e.g., "search", "chat", "translate")
+       * 
+       * FIX #2: Intent Extraction
+       * ========================
+       * The intent is extracted from the backend response and passed to setDisplayIntent.
+       * This enables conditional rendering logic in WebGLTextRenderer:
+       * shouldRender = (intent === 'search') || (!isModelActive)
+       * 
+       * This means:
+       * - Search results show in 3D mode (intent='search' with model ON)
+       * - ALL content shows in 2D mode (when model is OFF)
+       * - Regular chat messages hide the 3D text box in 3D mode
        */
       const aiResponse: Message = {
         id: data.message_id || (Date.now() + 1).toString(),
@@ -277,6 +296,7 @@ export function ChatPanel({
 
       setMessages((prev) => [...prev, aiResponse]);
       setDisplayContent?.(data.display2d ?? null);
+      setDisplayIntent?.(data.intent);  // FIX #2: Extract and pass intent for conditional rendering
       
       // Update status indicator with voice text (or null for fallback to default)
       setStatusVoiceText?.(data.voice ?? null);
@@ -289,6 +309,7 @@ export function ChatPanel({
       };
       setMessages((prev) => [...prev, errorResponse]);
       setDisplayContent?.(null);
+      setDisplayIntent?.(undefined);  // Clear intent on error
     }
   };
 
