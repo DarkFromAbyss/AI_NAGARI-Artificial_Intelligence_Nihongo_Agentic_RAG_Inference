@@ -14,7 +14,7 @@
 
 ---
 
-## 📖 Lời Giới Thiệu (Introduction)
+## 📖 Introduction
 
 **AI NAGARI** is a cutting-edge web-based Japanese language learning platform that combines artificial intelligence, retrieval-augmented generation (RAG), and interactive 3D avatar technology. Built as a graduation thesis project, this system provides an immersive, personalized learning experience through intelligent conversational AI with real-time text-to-speech synthesis and 3D character interaction.
 
@@ -29,7 +29,7 @@
 
 ---
 
-## 🏗️ Cấu Trúc Tổng Quan (Project Architecture & Structure)
+## 🏗️ Project Architecture & Structure
 
 ```
 AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference/
@@ -152,7 +152,7 @@ AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference/
 
 ---
 
-## 🛠️ Công Nghệ Áp Dụng (Tech Stack)
+## 🛠️ Tech Stack
 
 ### Frontend / 3D Rendering
 
@@ -209,7 +209,7 @@ AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference/
 
 ---
 
-## 📦 Installation Guide (Cách Cài Đặt)
+## 📦 Installation Guide 
 
 ### 📋 Prerequisites
 
@@ -588,7 +588,7 @@ git push origin feature/your-feature-name
 
 ---
 
-## 🙏 Lời Kết (Acknowledgments & Conclusion)
+## 🙏 Acknowledgments & Conclusion
 
 AI NAGARI represents the culmination of dedicated research and development into intelligent language learning systems. This graduation thesis project integrates state-of-the-art technologies in:
 
