@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { CharacterShowcase } from "@/components/character-showcase";
 import { ChatPanel } from "@/components/chat-panel";
 import { GeminiChatInterface } from "@/components/gemini-chat-interface";
+import { UserProfileDropdown } from "@/components/user-profile-dropdown";
 import { stopAllActiveAudio } from "@/hooks/use-audio-manager";
 
 interface Message {
@@ -141,17 +142,30 @@ export function AppLayout() {
          * 
          * FIX: Now passing shared messages and setMessages from parent
          */
-        <div className="flex flex-1 overflow-hidden">
-          <GeminiChatInterface
-            messages={messages}
-            setMessages={setMessages}
-            setDisplayContent={setDisplayContent}
-            setStatusVoiceText={setStatusVoiceText}
-            className={cn(
-              "transition-all duration-500 ease-out",
-              "animate-in fade-in"
-            )}
-          />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* User Profile Dropdown Header - Only visible when model is OFF */}
+          <div className="flex items-center justify-end px-4 py-3 border-b border-border/30">
+            <UserProfileDropdown
+              isModelActive={isModelActive}
+              isAuthenticated={false}
+              userName="Guest"
+              userAvatar={null}
+            />
+          </div>
+
+          {/* Main Chat Interface */}
+          <div className="flex flex-1 overflow-hidden">
+            <GeminiChatInterface
+              messages={messages}
+              setMessages={setMessages}
+              setDisplayContent={setDisplayContent}
+              setStatusVoiceText={setStatusVoiceText}
+              className={cn(
+                "transition-all duration-500 ease-out",
+                "animate-in fade-in"
+              )}
+            />
+          </div>
         </div>
       )}
     </div>

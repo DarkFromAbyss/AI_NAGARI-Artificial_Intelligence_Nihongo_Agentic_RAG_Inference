@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AnimatedGreeting } from "@/components/animated-greeting";
 import { AudioPlayer } from "@/components/audio-player";
 import { MarkdownMessage } from "@/components/markdown-message";
+import { UserProfileDropdown } from "@/components/user-profile-dropdown";
 import { TTSService } from "@/services/tts-service";
 
 interface ChatPanelProps {
@@ -49,23 +50,6 @@ interface BackendChatResponse {
   voice?: string;
   display2d?: string;
   intent?: string;
-}
-
-// User profile icon
-function UserIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    >
-      <circle cx="12" cy="8" r="4" />
-      <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-    </svg>
-  );
 }
 
 // Paper plane send icon
@@ -338,10 +322,13 @@ export function ChatPanel({
           </div>
         </div>
         
-        {/* Right - User profile circle */}
-        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-          <UserIcon className="h-3.5 w-3.5 text-primary" />
-        </div>
+        {/* Right - Interactive User Profile Button */}
+        <UserProfileDropdown
+          isModelActive={isModelActive}
+          isAuthenticated={false}
+          userName="Guest"
+          userAvatar={null}
+        />
       </header>
 
       {/* Unified Chat Surface - No visual separation */}

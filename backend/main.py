@@ -12,10 +12,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from core.config import settings
 from core.logger import get_logger
-from routers import chat, tts
+from routers import auth, chat, tts
 
 # Initialize logger for main module
 logger = get_logger(__name__)
@@ -227,16 +228,46 @@ def create_app() -> FastAPI:
 
     # ==================== EXCEPTION HANDLERS ====================
 
-    @app.exception_handler(status.HTTP_422_UNPROCESSABLE_ENTITY)
-    async def validation_exception_handler(request: Request, exc: Exception):
-        """Handle Pydantic validation errors."""
-        logger.warning(f"Validation error on {request.url.path}: {str(exc)}")
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        """Handle Pydantic validation errors with detailed logging."""
+        logger.error(f"[VALIDATION_ERROR] Request validation failed on {request.url.path}")
+        logger.error(f"[VALIDATION_ERROR] Method: {request.method}")
+        
+        errors = {}
+        for error in exc.errors():
+            # Extract field name from error location
+            # Location might be ('body', 'fieldname') or just ('fieldname',)
+            field = 'general'
+            if error['loc']:
+                loc = error['loc']
+                # Skip 'body' if it's the first element (for request body validation)
+                if len(loc) >= 2 and loc[0] == 'body':
+                    field = str(loc[1])
+                elif loc and loc[0] != 'body':
+                    field = str(loc[0])
+            
+            msg = error['msg']
+            errors[field] = msg
+            logger.error(f"  - Field '{field}': {msg} (type: {error['type']})")
+        
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
-                "status": "error",
-                "message": "Request validation failed",
-                "detail": str(exc)
+                "success": False,
+                "errors": errors
+            }
+        )
+
+    @app.exception_handler(status.HTTP_422_UNPROCESSABLE_ENTITY)
+    async def http_422_handler(request: Request, exc: Exception):
+        """Handle HTTP 422 errors."""
+        logger.warning(f"HTTP 422 on {request.url.path}: {str(exc)}")
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "success": False,
+                "errors": {"general": "Request validation failed"}
             }
         )
 
@@ -258,6 +289,9 @@ def create_app() -> FastAPI:
 
     # ==================== ROUTE REGISTRATION ====================
 
+    # Include authentication routes
+    app.include_router(auth.router)
+    
     # Include chat routes
     app.include_router(chat.router)
     
