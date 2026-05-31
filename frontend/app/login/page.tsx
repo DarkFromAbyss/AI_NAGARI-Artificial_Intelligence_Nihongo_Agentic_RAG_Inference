@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import './auth.css';
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -14,8 +17,47 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Handle login logic here
-    setTimeout(() => setIsLoading(false), 1000);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+      const res = await fetch(`${backendUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username_or_email: email,
+          password,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        const message = data?.errors?.general || 'Login failed';
+        console.error('[Login] failed:', data);
+        window.alert(message);
+        return;
+      }
+
+      if (!data?.session_token) {
+        console.error('[Login] success but missing session_token:', data);
+        window.alert('Login succeeded but session token was missing');
+        return;
+      }
+
+      // Persist token for subsequent API calls (minimal change to satisfy redirect + backend feedback)
+      localStorage.setItem('session_token', data.session_token);
+
+      // Immediate redirect on success
+      router.push('/');
+    } catch (err) {
+      console.error('[Login] error:', err);
+      window.alert('An unexpected error occurred during login');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -172,3 +214,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

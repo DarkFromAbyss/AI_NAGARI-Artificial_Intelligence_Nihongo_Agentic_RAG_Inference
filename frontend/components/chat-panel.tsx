@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AnimatedGreeting } from "@/components/animated-greeting";
@@ -124,8 +124,33 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [showGreeting, setShowGreeting] = useState(true);
-  const ttsServiceRef = useRef<TTSService | null>(null);
-  const [sessionId] = useState(() => `session_${Date.now()}`);
+  const ttsServiceRef = useRef<TTSService | null>(null);  const containerRef = useRef<HTMLAsideElement>(null);
+  const [, forceUpdate] = useState({});
+
+  // Trigger layout recalculation when sidebar/model state changes
+  // Use ResizeObserver to monitor parent container and ensure proper width adjustment
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+
+    // Create ResizeObserver to watch parent container size changes
+    // This triggers whenever the flex layout recalculates due to sidebar width changes
+    const resizeObserver = new ResizeObserver(() => {
+      forceUpdate({});
+      // Trigger window resize event for any ResizeObservers in child components
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    // Observe the parent container (the flex container in AppLayout)
+    const parentContainer = containerRef.current.parentElement;
+    if (parentContainer) {
+      resizeObserver.observe(parentContainer);
+    }
+
+    // Cleanup observer on unmount or when dependencies change
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [isModelActive]);  const [sessionId] = useState(() => `session_${Date.now()}`);
   const audioQueueRef = useRef<string[]>([]);  // Track pending audio synthesis
   const isPlayingRef = useRef(false);  // Prevent overlapping audio
 
@@ -299,16 +324,24 @@ export function ChatPanel({
 
   return (
     <aside
+      ref={containerRef}
       className={cn(
-        // Responsive width using clamp - wider but constrained
-        "flex flex-col h-full border-l border-border/50 bg-card",
-        "w-[clamp(380px,28vw,480px)]",
+        // Responsive width that prevents overflow when sidebar expands
+        // flex-shrink-0: Prevents compression, relies on clamp() for responsiveness
+        // clamp(300px, 35%, 480px): 
+        // - 300px minimum (safe for small viewports)
+        // - 35% of flex container (lower than before to leave room for sidebar)
+        // - 480px maximum (visual balance)
+        "flex flex-col h-full bg-card",
+        "flex-shrink-0",
         className
       )}
       style={{
-        // Fallback for older browsers
-        minWidth: "380px",
-        maxWidth: "480px",
+        // Responsive to flex container width (not viewport)
+        // Lower minimum and percentage prevent overflow when sidebar expands
+        width: "clamp(300px, 35%, 480px)",
+        WebkitBoxSizing: "border-box",
+        boxSizing: "border-box",
       }}
     >
       {/* Header - Minimal top section */}

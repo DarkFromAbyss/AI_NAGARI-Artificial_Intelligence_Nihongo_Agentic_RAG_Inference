@@ -136,6 +136,11 @@ async def login(request: LoginRequest):
     Raises:
         HTTPException: If login fails with structured error details
     """
+    logger.info("=" * 50)
+    logger.info("[LOGIN] Incoming login request")
+    logger.info(f"  - Username/Email: {request.username_or_email}")
+    logger.info("=" * 50)
+
     try:
         success, user_data, errors, session_token = auth_service.login_user(
             username_or_email=request.username_or_email,
@@ -143,7 +148,9 @@ async def login(request: LoginRequest):
         )
 
         if not success:
-            logger.warning(f"Login failed for {request.username_or_email}: {errors}")
+            logger.warning(
+                f"[LOGIN] Login failed for {request.username_or_email} | errors={errors}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
@@ -152,6 +159,23 @@ async def login(request: LoginRequest):
                 }
             )
 
+        if not session_token:
+            # Defensive: backend should return a session token on success
+            logger.error(
+                f"[LOGIN] Backend reported success but session_token is missing for {request.username_or_email}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "success": False,
+                    "errors": {"general": "Login succeeded but session token was not created"}
+                }
+            )
+
+        logger.info(
+            f"[LOGIN] Login successful for {request.username_or_email} | session_token_present=True"
+        )
+        
         user_response = UserResponse(**user_data)
         return LoginResponse(
             success=True,
@@ -161,7 +185,7 @@ async def login(request: LoginRequest):
         )
 
     except ValidationError as e:
-        logger.error(f"Validation error during login: {str(e)}")
+        logger.error(f"[LOGIN] Validation error during login: {str(e)}")
         errors = {}
         for error in e.errors():
             field = error['loc'][0] if error['loc'] else 'general'
@@ -179,7 +203,7 @@ async def login(request: LoginRequest):
         raise
 
     except Exception as e:
-        logger.error(f"Unexpected error during login: {str(e)}")
+        logger.error(f"[LOGIN] Unexpected error during login: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -187,6 +211,7 @@ async def login(request: LoginRequest):
                 "errors": {"general": "An unexpected error occurred during login"}
             }
         )
+
 
 
 @router.post(

@@ -109,15 +109,17 @@ export function AppLayout() {
          * Right: Chat Panel with multi-modal response handling
          * 
          * FIX: Now passing shared messages and setMessages from parent
+         * FIX: Added min-w-0 to ensure flex items don't overflow when sidebar expands
          */
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden min-w-0">
           {/* Center - Character Showcase with 3D text rendering */}
+          {/* min-w-0 ensures it shrinks below its content size when sidebar expands */}
           <CharacterShowcase
             displayContent={displayContent}
             displayIntent={displayIntent}
             statusVoiceText={statusVoiceText}
             isModelActive={isModelActive}
-            className="flex-1"
+            className="flex-1 min-w-0"
           />
 
           {/* Right - Chat Panel */}
@@ -129,7 +131,7 @@ export function AppLayout() {
             setDisplayIntent={setDisplayIntent}
             setStatusVoiceText={setStatusVoiceText}
             className={cn(
-              "w-[420px] border-l border-border/30",
+              "border-l border-border/30",
               "transition-all duration-500 ease-out"
             )}
           />
@@ -141,8 +143,9 @@ export function AppLayout() {
          * and dynamic transitions to bottom input on first message
          * 
          * FIX: Now passing shared messages and setMessages from parent
+         * FIX: Added min-w-0 to ensure flex items don't overflow when sidebar expands
          */
-        <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
           {/* User Profile Dropdown Header - Only visible when model is OFF */}
           <div className="flex items-center justify-end px-4 py-3 border-b border-border/30">
             <UserProfileDropdown
@@ -154,7 +157,8 @@ export function AppLayout() {
           </div>
 
           {/* Main Chat Interface */}
-          <div className="flex flex-1 overflow-hidden">
+          {/* min-w-0 ensures GeminiChatInterface can shrink when sidebar expands */}
+          <div className="flex flex-1 overflow-hidden min-w-0">
             <GeminiChatInterface
               messages={messages}
               setMessages={setMessages}
