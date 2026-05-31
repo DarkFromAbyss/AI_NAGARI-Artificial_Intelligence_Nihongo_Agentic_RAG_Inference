@@ -53,12 +53,51 @@ export function UserProfileDropdown({
     setIsDropdownOpen(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     closeDropdown();
+
+    // Grab token first for best-effort backend logout
+    const token = (() => {
+      try {
+        return window.localStorage.getItem('session_token');
+      } catch {
+        return null;
+      }
+    })();
+
+    // Clear local auth state immediately
+    try {
+      window.localStorage.removeItem('session_token');
+      window.localStorage.removeItem('user_display_name');
+      window.localStorage.removeItem('user_email');
+    } catch {
+      // ignore
+    }
+
+    // Note: token might already be removed above; keep request best-effort and non-blocking.
+    if (token) {
+      try {
+        await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/auth/logout`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_token: token }),
+          }
+        );
+      } catch (e) {
+        console.warn('[Logout] backend logout request failed:', e);
+      }
+    }
+
     if (onLogout) {
       onLogout();
     }
+
+    // Hard refresh to ensure header reverts instantly
+    window.location.href = '/';
   };
+
 
   return (
     <>

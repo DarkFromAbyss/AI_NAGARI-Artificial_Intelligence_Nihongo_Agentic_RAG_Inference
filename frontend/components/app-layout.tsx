@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
 import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/sidebar";
 import { CharacterShowcase } from "@/components/character-showcase";
@@ -92,8 +93,21 @@ export function AppLayout() {
     setIsModelActive(newState);
   };
 
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userName, setUserName] = useState("Guest");
+
+  useEffect(() => {
+    // Client-only read to avoid ReferenceError during SSR/initial render
+    const token = window.localStorage.getItem("session_token");
+    const display = window.localStorage.getItem("user_display_name");
+
+    setIsAuthenticated(!!token);
+    setUserName(display || "Guest");
+  }, []);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
+
       {/* ============ LEFT RESPONSIVE SIDEBAR ============ */}
       <Sidebar
         isModelActive={isModelActive}
@@ -150,11 +164,12 @@ export function AppLayout() {
           <div className="flex items-center justify-end px-4 py-3 border-b border-border/30">
             <UserProfileDropdown
               isModelActive={isModelActive}
-              isAuthenticated={false}
-              userName="Guest"
+              isAuthenticated={isAuthenticated}
+              userName={userName}
               userAvatar={null}
             />
           </div>
+
 
           {/* Main Chat Interface */}
           {/* min-w-0 ensures GeminiChatInterface can shrink when sidebar expands */}

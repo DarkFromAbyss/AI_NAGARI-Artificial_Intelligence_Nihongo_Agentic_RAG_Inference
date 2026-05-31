@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
+
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AnimatedGreeting } from "@/components/animated-greeting";
@@ -15,7 +16,7 @@ interface ChatPanelProps {
   isModelActive?: boolean;
   /** Unified chat history from parent (AppLayout) */
   messages: Message[];
-  /** Setter for chat history from parent (AppLayout) */
+  /** Setter for chat history from parent (AppLayout) */ 
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   /** Setter to provide 3D display content to the character showcase */
   setDisplayContent?: (content: string | null) => void;
@@ -124,12 +125,26 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [showGreeting, setShowGreeting] = useState(true);
-  const ttsServiceRef = useRef<TTSService | null>(null);  const containerRef = useRef<HTMLAsideElement>(null);
+  const ttsServiceRef = useRef<TTSService | null>(null);  const containerRef = useRef<HTMLElement | null>(null);
+
   const [, forceUpdate] = useState({});
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userName, setUserName] = useState("Guest");
 
   // Trigger layout recalculation when sidebar/model state changes
   // Use ResizeObserver to monitor parent container and ensure proper width adjustment
-  useLayoutEffect(() => {
+  useEffect(() => {
+    // Client-only read to avoid ReferenceError during SSR/initial render
+    const token = window.localStorage.getItem("session_token");
+    const display = window.localStorage.getItem("user_display_name");
+
+    setIsAuthenticated(!!token);
+    setUserName(display || "Guest");
+  }, []);
+
+  useLayoutEffect(() => {  
+
     if (!containerRef.current) return;
 
     // Create ResizeObserver to watch parent container size changes
@@ -356,10 +371,12 @@ export function ChatPanel({
         </div>
         
         {/* Right - Interactive User Profile Button */}
+        {/* FIX: Use real auth/session values instead of hardcoded guest values.
+            AppLayout is the source of truth for isAuthenticated/userName; lift values further when needed. */}
         <UserProfileDropdown
           isModelActive={isModelActive}
-          isAuthenticated={false}
-          userName="Guest"
+          isAuthenticated={isAuthenticated}  // FIX: Replace with real auth state from AppLayout
+          userName={userName}  // FIX: Replace with real user name from AppLayout
           userAvatar={null}
         />
       </header>

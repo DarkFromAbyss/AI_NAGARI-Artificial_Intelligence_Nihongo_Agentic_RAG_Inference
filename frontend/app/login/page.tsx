@@ -47,8 +47,12 @@ export default function LoginPage() {
         return;
       }
 
-      // Persist token for subsequent API calls (minimal change to satisfy redirect + backend feedback)
+      // Persist session + basic user identity so header can update immediately after redirect
       localStorage.setItem('session_token', data.session_token);
+      const displayName = data?.user?.full_name || data?.user?.username || 'Guest';
+      const emailValue = data?.user?.email || '';
+      localStorage.setItem('user_display_name', displayName);
+      localStorage.setItem('user_email', emailValue);
 
       // Immediate redirect on success
       router.push('/');
