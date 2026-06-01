@@ -8,6 +8,29 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+
+-- BẢNG MỚI BỔ SUNG: Lưu trữ thông tin cá nhân cơ bản và hành vi
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    
+    -- Thông tin cơ bản (Không nhạy cảm)
+    birth_year INTEGER,          -- Thay vì lưu ngày sinh cụ thể (nhạy cảm), lưu năm sinh để tính độ tuổi/nhóm tuổi
+    occupation TEXT,             -- Nghề nghiệp (ví dụ: Học sinh, Sinh viên, Kỹ sư, Giáo viên...)
+    
+    -- Sở thích và Định hướng cá nhân
+    interests TEXT,              -- Sở thích cá nhân (Lưu dạng chuỗi text hoặc JSON text, ví dụ: "AI, Lập trình, Ngoại ngữ")
+         -- Mục tiêu cốt lõi khi sử dụng hệ thống (ví dụ: "Luyện thi", "Giao tiếp")
+    current_level TEXT,          -- Trình độ hiện tại của người dùng (ví dụ: "Beginner", "Intermediate")
+    
+    -- Cấu hình hệ thống ưa thích
+    preferred_language TEXT DEFAULT 'vi', -- Ngôn ngữ hiển thị ưu tiên (vi, ja, en...)
+    
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS user_credentials (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL UNIQUE,

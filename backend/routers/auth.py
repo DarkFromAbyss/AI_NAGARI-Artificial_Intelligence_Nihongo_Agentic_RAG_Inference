@@ -1,6 +1,6 @@
 """Authentication API routes for user registration and login."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Header
 from pydantic import ValidationError
 
 from schemas.auth_schema import (
@@ -218,11 +218,11 @@ async def login(request: LoginRequest):
     "/logout",
     status_code=status.HTTP_200_OK
 )
-async def logout(session_token: str):
+async def logout(authorization: str = Header(...)):
     """Logout user by invalidating their session token.
     
     Args:
-        session_token: Session token to invalidate
+        authorization: Authorization header containing the session token (format: "Bearer <token>")
         
     Returns:
         Success message if logout successful
@@ -230,6 +230,21 @@ async def logout(session_token: str):
     Raises:
         HTTPException: If logout fails
     """
+    # Extract token from "Bearer <token>" format
+    try:
+        parts = authorization.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise ValueError("Invalid authorization format")
+        session_token = parts[1]
+    except (IndexError, ValueError):
+        logger.error(f"Invalid authorization header format")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "success": False,
+                "errors": {"authorization": "Invalid authorization header format. Use: Bearer <token>"}
+            }
+        )
     try:
         success = auth_service.logout_user(session_token)
 
@@ -266,11 +281,11 @@ async def logout(session_token: str):
     "/verify-session",
     status_code=status.HTTP_200_OK
 )
-async def verify_session(session_token: str):
+async def verify_session(authorization: str = Header(...)):
     """Verify if a session token is valid and active.
     
     Args:
-        session_token: Session token to verify
+        authorization: Authorization header containing the session token (format: "Bearer <token>")
         
     Returns:
         Session validity status and user_id if valid
@@ -278,6 +293,21 @@ async def verify_session(session_token: str):
     Raises:
         HTTPException: If verification fails
     """
+    # Extract token from "Bearer <token>" format
+    try:
+        parts = authorization.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise ValueError("Invalid authorization format")
+        session_token = parts[1]
+    except (IndexError, ValueError):
+        logger.error(f"Invalid authorization header format")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "success": False,
+                "errors": {"authorization": "Invalid authorization header format. Use: Bearer <token>"}
+            }
+        )
     try:
         is_valid, user_id = auth_service.verify_session_token(session_token)
 

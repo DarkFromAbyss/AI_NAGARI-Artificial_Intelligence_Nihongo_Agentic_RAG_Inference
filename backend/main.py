@@ -16,7 +16,7 @@ from fastapi.exceptions import RequestValidationError
 
 from core.config import settings
 from core.logger import get_logger
-from routers import auth, chat, tts
+from routers import auth, chat, tts, profile
 
 # Initialize logger for main module
 logger = get_logger(__name__)
@@ -221,7 +221,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
@@ -291,6 +291,9 @@ def create_app() -> FastAPI:
 
     # Include authentication routes
     app.include_router(auth.router)
+    
+    # Include profile routes
+    app.include_router(profile.router)
     
     # Include chat routes
     app.include_router(chat.router)
