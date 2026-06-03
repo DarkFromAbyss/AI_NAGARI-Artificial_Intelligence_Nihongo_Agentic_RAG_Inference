@@ -129,9 +129,9 @@ def main() -> None:
     config = parse_arguments()
     try:
         download_drive_folder(config.url, config.target_dir)
-        config_file = update_config(config.target_dir)
+        # config_file = update_config(config.target_dir)
         print(f"\nDownloaded directory: {config.target_dir.resolve()}")
-        print(f"Config file: {config_file}\n")
+        # print(f"Config file: {config_file}\n")
         generate_directory_tree(config.target_dir)
         logger.info("Data download workflow finished successfully.")
     except Exception as error:

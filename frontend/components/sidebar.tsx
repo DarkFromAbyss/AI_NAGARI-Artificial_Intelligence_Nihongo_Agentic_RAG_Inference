@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/use-theme";
@@ -9,6 +10,8 @@ interface SidebarProps {
   className?: string;
   isModelActive?: boolean;
   onModelToggle?: (state: boolean) => void;
+  isVoiceActive?: boolean;
+  onVoiceClick?: () => void;
   onLogoClick?: () => void;
 }
 
@@ -198,7 +201,7 @@ function MenuItem({ icon, label, onClick, isActive, isExpanded = true }: MenuIte
       className={cn(
         "h-11 px-4 rounded-lg text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200",
         isExpanded ? "w-full justify-start gap-3" : "w-11 justify-center",
-        isActive && "bg-sidebar-accent text-sidebar-primary"
+        isActive && "bg-sidebar-accent text-sidebar-primary shadow-lg shadow-primary/50 ring-2 ring-primary/30"
       )}
     >
       <span className="w-5 h-5 flex-shrink-0">{icon}</span>
@@ -209,7 +212,8 @@ function MenuItem({ icon, label, onClick, isActive, isExpanded = true }: MenuIte
   );
 }
 
-export function Sidebar({ className, isModelActive = false, onModelToggle, onLogoClick }: SidebarProps) {
+export function Sidebar({ className, isModelActive = false, onModelToggle, isVoiceActive = false, onVoiceClick, onLogoClick }: SidebarProps) {
+  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const isSoftAnime = theme === "soft-anime";
   const [isExpanded, setIsExpanded] = useState(true);
@@ -224,9 +228,21 @@ export function Sidebar({ className, isModelActive = false, onModelToggle, onLog
     }
   };
 
+  const handleVoiceClick = () => {
+    if (onVoiceClick) {
+      onVoiceClick();
+    } else {
+      // Default navigation to voice profiles page
+      router.push("/profile/voice");
+    }
+  };
+
   const handleLogoClick = () => {
     if (onLogoClick) {
       onLogoClick();
+    } else {
+      // Default navigation to home
+      router.push("/");
     }
   };
 
@@ -288,6 +304,8 @@ export function Sidebar({ className, isModelActive = false, onModelToggle, onLog
         <MenuItem
           icon={<VoiceIcon className="w-5 h-5" />}
           label="Voice"
+          onClick={handleVoiceClick}
+          isActive={isVoiceActive}
           isExpanded={isExpanded}
         />
         <MenuItem
