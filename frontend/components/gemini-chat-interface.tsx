@@ -18,6 +18,14 @@ interface Message {
   isGeneratingAudio?: boolean;
 }
 
+interface UserProfile {
+  id: string;
+  displayName: string;
+  email: string;
+  sessionToken: string;
+  createdAt: Date;
+}
+
 interface BackendChatResponse {
   message_id?: string;
   display?: string;
@@ -141,6 +149,9 @@ export function GeminiChatInterface({
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
+  // User profile tracking
+  const userProfileRef = useRef<UserProfile | null>(null);
+  
   // Generate persistent session ID for conversation tracking
   const sessionIdRef = useRef<string>("");
   const ttsServiceRef = useRef<TTSService | null>(null);
@@ -148,6 +159,47 @@ export function GeminiChatInterface({
   useEffect(() => {
     if (!sessionIdRef.current) {
       sessionIdRef.current = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    // Initialize user profile from localStorage
+    if (!userProfileRef.current) {
+      const userId = typeof window !== 'undefined' ? window.localStorage.getItem('user_id') : null;
+      const displayName = typeof window !== 'undefined' ? window.localStorage.getItem('user_display_name') : null;
+      const email = typeof window !== 'undefined' ? window.localStorage.getItem('user_email') : null;
+      const sessionToken = typeof window !== 'undefined' ? window.localStorage.getItem('session_token') : null;
+
+      console.log('[UserProfile] Raw localStorage data:', {
+        userId: userId,
+        displayName: displayName,
+        email: email,
+        hasSessionToken: !!sessionToken,
+        allKeys: typeof window !== 'undefined' ? Object.keys(window.localStorage) : []
+      });
+
+      // Create internal user profile
+      userProfileRef.current = {
+        id: userId && userId.trim() ? userId : 'anonymous',
+        displayName: displayName && displayName.trim() ? displayName : 'Guest',
+        email: email || '',
+        sessionToken: sessionToken || '',
+        createdAt: new Date(),
+      };
+
+      // Check if user is authenticated
+      const isAuthenticated = userId && userId.trim() && userId !== 'anonymous';
+      
+      console.log('[UserProfile] Initialized:', {
+        userId: userProfileRef.current.id,
+        displayName: userProfileRef.current.displayName,
+        email: userProfileRef.current.email,
+        isAuthenticated: isAuthenticated,
+        sessionId: sessionIdRef.current,
+        timestamp: userProfileRef.current.createdAt.toISOString(),
+      });
+
+      if (!isAuthenticated) {
+        console.warn('[UserProfile] WARNING: User not authenticated. Please log in first.');
+      }
     }
     
     // Initialize TTS service once
@@ -169,10 +221,35 @@ export function GeminiChatInterface({
 
   /**
    * Handle sending a message
-   * Calls the backend API and updates the chat history
+   * Identifies the user from the internal profile and calls the backend API
    */
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
+
+    // Identify the user when they click submit
+    const currentUser = userProfileRef.current;
+    if (!currentUser) {
+      console.error('User profile not initialized');
+      alert('User profile could not be loaded. Please reload the page.');
+      return;
+    }
+
+    const isAnonymous = currentUser.id === 'anonymous';
+    if (isAnonymous) {
+      console.warn('[Message Submit] WARNING: Sending as anonymous user. User should be logged in.', {
+        storedUserId: typeof window !== 'undefined' ? window.localStorage.getItem('user_id') : 'N/A',
+        currentUserProfile: currentUser,
+        allLocalStorageKeys: typeof window !== 'undefined' ? Object.keys(window.localStorage) : []
+      });
+    }
+    
+    console.log('[Message Submit] User identified:', {
+      userId: currentUser.id,
+      userName: currentUser.displayName,
+      email: currentUser.email,
+      isAuthenticated: !isAnonymous,
+      timestamp: new Date().toISOString(),
+    });
 
     // Add user message
     const userMessage: Message = {
@@ -186,17 +263,22 @@ export function GeminiChatInterface({
     setIsLoading(true);
 
     try {
-      // Call backend API via Next.js proxy
+      // Call backend API via Next.js proxy with identified user
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      
+      const requestPayload = {
+        message: userMessage.content,
+        user_id: currentUser.id,  // Use actual identified user ID
+        session_id: sessionIdRef.current,
+        language: "en",
+      };
+      
+      console.log('[Message Send] Request payload:', requestPayload);
+      
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userMessage.content,
-          user_id: "user_web_ui",
-          session_id: sessionIdRef.current,
-          language: "en",
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!response.ok) {

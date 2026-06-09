@@ -311,8 +311,7 @@ class SenseiAgent:
             
             logger.info(f"""Agent execution completed | 
                         Iterations: {iterations} | 
-                        Final response length: {len(final_response_text)} chars| 
-                        Content preview: {final_response_text}""")
+                        Final response length: {len(final_response_text)} chars""")
             
             if not final_response_text:
                 logger.warning("No response generated from agent")

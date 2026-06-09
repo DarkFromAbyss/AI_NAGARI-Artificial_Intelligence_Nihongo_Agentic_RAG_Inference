@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/sidebar';
 import { useRouter } from 'next/navigation';
 import styles from '@/styles/voice-profiles.module.css';
@@ -8,22 +8,33 @@ import styles from '@/styles/voice-profiles.module.css';
 interface Character {
   id: number;
   name: string;
+  uuid: string;
+  iconPath: string;
+  sampleVoicePath: string;
+  description: string;
 }
 
 export default function VoiceProfilesPage() {
   const router = useRouter();
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [loading, setLoading] = useState(true);
   
-  // Mock character data (from Voicevox voice IDs)
-  const characters: Character[] = [
-    { id: 110, name: 'Aqua' },
-    { id: 111, name: 'Aura' },
-    { id: 3055, name: 'Akari' },
-    { id: 3056, name: 'Ayaka' },
-    { id: 3057, name: 'Anzu' },
-    { id: 55, name: 'Amane' },
-    { id: 56, name: 'Arisa' },
-    { id: 57, name: 'Asuna' },
-  ];
+  // Load character data from JSON
+  useEffect(() => {
+    const loadCharacters = async () => {
+      try {
+        const response = await fetch('/data/voice-characters.json');
+        const data = await response.json();
+        setCharacters(data.characters);
+        setLoading(false);
+      } catch (error) {
+        console.error('Failed to load character data:', error);
+        setLoading(false);
+      }
+    };
+    
+    loadCharacters();
+  }, []);
 
   // State Management
   const [voiceFeatureEnabled, setVoiceFeatureEnabled] = useState(true);
@@ -91,34 +102,112 @@ export default function VoiceProfilesPage() {
               <table className={styles.characterTable}>
                 <thead>
                   <tr>
+                    <th>Icon</th>
                     <th>ID</th>
                     <th>Name</th>
+                    <th>Description</th>
+                    <th>Sample</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {characters.map((character) => (
-                    <tr
-                      key={character.id}
-                      className={`${styles.tableRow} ${
-                        selectedCharacterId === character.id ? styles.rowActive : ''
-                      }`}
-                      onClick={() => handleCharacterSelect(character.id)}
-                    >
-                      <td className={styles.tableCell}>{character.id}</td>
-                      <td className={styles.tableCell}>{character.name}</td>
-                      <td className={styles.tableCell}>
-                        <button
-                          className={`${styles.selectButton} ${
-                            selectedCharacterId === character.id ? styles.selectButtonActive : ''
-                          }`}
-                          onClick={() => handleCharacterSelect(character.id)}
-                        >
-                          {selectedCharacterId === character.id ? 'Selected' : 'Select'}
-                        </button>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className={styles.loadingCell}>
+                        Loading character data...
                       </td>
                     </tr>
-                  ))}
+                  ) : characters.length > 0 ? (
+                    characters.map((character) => (
+                      <tr
+                        key={character.id}
+                        className={`${styles.tableRow} ${
+                          selectedCharacterId === character.id ? styles.rowActive : ''
+                        }`}
+                        onClick={() => handleCharacterSelect(character.id)}
+                      >
+                        <td className={styles.tableCell}>
+                          <div className={styles.iconContainer}>
+                            <img
+                              src={character.iconPath}
+                              alt={character.name}
+                              className={styles.characterIcon}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        </td>
+                        <td className={styles.tableCell}>{character.id}</td>
+                        <td className={styles.tableCell}>
+                          <strong>{character.name}</strong>
+                        </td>
+                        <td className={styles.tableCell}>
+                          <span className={styles.description}>{character.description}</span>
+                        </td>
+                        <td className={styles.tableCell}>
+                          <button
+                            className={styles.playButton}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Use backend API to stream voice sample
+                              const sampleUrl = `/api/tts/voice-sample/${character.uuid}/${character.id}/1`;
+                              const audio = new Audio();
+                              
+                              // Set up event listeners before setting src
+                              audio.oncanplay = () => {
+                                console.log(`Playing voice sample for ${character.name} (ID: ${character.id})`);
+                              };
+                              
+                              audio.onplaying = () => {
+                                console.log(`Now playing: ${character.name}`);
+                              };
+                              
+                              audio.onerror = (error) => {
+                                const errorMsg = audio.error ? audio.error.message : String(error);
+                                console.error(`Failed to play voice sample for ${character.name}:`, errorMsg);
+                                console.error('URL attempted:', sampleUrl);
+                                console.error('Audio error code:', audio.error?.code);
+                                alert(`Failed to play voice sample: ${errorMsg}`);
+                              };
+                              
+                              audio.onended = () => {
+                                console.log(`Finished playing: ${character.name}`);
+                              };
+                              
+                              // Set the source and attempt to play
+                              audio.src = sampleUrl;
+                              audio.type = "audio/wav";
+                              
+                              audio.play().catch((error) => {
+                                console.error(`Error playing audio for ${character.name}:`, error.message);
+                                alert(`Error playing audio: ${error.message}`);
+                              });
+                            }}
+                            title="Play voice sample"
+                          >
+                            ▶ Play
+                          </button>
+                        </td>
+                        <td className={styles.tableCell}>
+                          <button
+                            className={`${styles.selectButton} ${
+                              selectedCharacterId === character.id ? styles.selectButtonActive : ''
+                            }`}
+                            onClick={() => handleCharacterSelect(character.id)}
+                          >
+                            {selectedCharacterId === character.id ? 'Selected' : 'Select'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className={styles.loadingCell}>
+                        No characters available
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

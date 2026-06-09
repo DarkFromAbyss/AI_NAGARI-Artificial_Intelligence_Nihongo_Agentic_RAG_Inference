@@ -3,6 +3,8 @@
 This module implements the POST /api/chat endpoint that receives
 user messages from the frontend, processes them through llm_core.SenseiAgent,
 and returns structured chat responses with display text and metadata.
+
+Includes user identification and activity logging to track user interactions.
 """
 
 import uuid
@@ -14,6 +16,7 @@ from schemas.chat_schema import (
     ChatMessageRequest,
     ChatMessageResponse
 )
+from services.user_identification_service import UserIdentificationService
 from core.logger import get_logger
 
 # Initialize logger for this module
@@ -21,6 +24,9 @@ logger = get_logger(__name__)
 
 # Create router for chat endpoints
 router = APIRouter(prefix="/api", tags=["chat"])
+
+# Initialize user identification service
+user_id_service = UserIdentificationService()
 
 
 @router.post(
@@ -52,6 +58,54 @@ async def post_chat_message(request: ChatMessageRequest, req: Request) -> ChatMe
         # Generate unique message ID for tracking across system
         message_id = f"msg_{uuid.uuid4().hex[:12]}"
         current_timestamp = datetime.utcnow()
+
+        # ========== DIAGNOSTIC: Check what user_id we received ==========
+        logger.info(
+            f"[DIAGNOSTIC] Incoming request user_id: '{request.user_id}' | "
+            f"Type: {type(request.user_id)} | "
+            f"Is None: {request.user_id is None} | "
+            f"Is Empty: {request.user_id == ''} | "
+            f"Stripped: '{request.user_id.strip() if request.user_id else 'NULL'}'"
+        )
+
+        # ========== STEP 0: Identify User from Database ==========
+        # Query database to get complete user profile
+        final_user_id = request.user_id or 'anonymous'
+        
+        # Trim whitespace to prevent "  " from being treated as a value
+        if isinstance(final_user_id, str):
+            final_user_id = final_user_id.strip() or 'anonymous'
+        
+        logger.info(f"[DIAGNOSTIC] Final user_id being used: '{final_user_id}'")
+        
+        user_info = user_id_service.identify_user(final_user_id)
+        
+        if user_info:
+            logger.info(
+                f"========== USER IDENTIFIED ==========\n"
+                f"User ID: {user_info['id']}\n"
+                f"Username: {user_info['username']}\n"
+                f"Email: {user_info['email']}\n"
+                f"Full Name: {user_info['full_name']}\n"
+                f"Status: {'Active' if user_info['is_active'] else 'Inactive'}\n"
+                f"Account Created: {user_info['created_at']}\n"
+                f"Preferred Language: {user_info['preferred_language']}\n"
+                f"Current Level: {user_info.get('current_level', 'N/A')}\n"
+                f"Occupation: {user_info.get('occupation', 'N/A')}\n"
+                f"Interests: {user_info.get('interests', 'N/A')}\n"
+                f"===================================="
+            )
+            
+            # Log the chat message to activity log
+            message_preview = request.message[:100]
+            user_id_service.log_chat_message(
+                user_id=request.user_id or 'anonymous',
+                message_id=message_id,
+                message_preview=message_preview,
+                ip_address=req.client.host if req.client else None
+            )
+        else:
+            logger.warning(f"Could not identify user: {request.user_id or 'anonymous'}")
 
         # Log the incoming message with context
         logger.info(

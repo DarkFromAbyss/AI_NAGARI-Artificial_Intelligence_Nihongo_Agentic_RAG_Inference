@@ -5,10 +5,11 @@ Returns audio streams for direct playback on the frontend.
 """
 
 from fastapi import APIRouter, HTTPException, status, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 import io
 from typing import Optional
 from pydantic import BaseModel, Field
+from pathlib import Path
 from core.logger import get_logger
 from tts.voicevox_service import VoicevoxTTSService
 
@@ -213,3 +214,140 @@ async def get_tts_health(req: Request) -> dict:
             "engine_ready": False,
             "message": str(e)
         }
+
+
+@router.get(
+    "/voice-sample/{character_uuid}/{voice_id}/{sample_number}",
+    summary="Get voice sample from Voicevox character",
+    description="Stream a voice sample WAV file from Voicevox character_info folder",
+    responses={
+        200: {
+            "description": "Voice sample WAV file",
+            "content": {"audio/wav": {}},
+        },
+        404: {"description": "Voice sample not found"},
+        400: {"description": "Invalid parameters"},
+    }
+)
+async def get_voice_sample(
+    character_uuid: str,
+    voice_id: int,
+    sample_number: int = 1
+) -> StreamingResponse:
+    """
+    Stream a voice sample WAV file from Voicevox resources.
+
+    Args:
+        character_uuid: Character UUID from Voicevox
+        voice_id: Voice speaker ID (110, 111, 3055, etc.)
+        sample_number: Sample number (1, 2, or 3)
+
+    Returns:
+        StreamingResponse: WAV audio file
+
+    Raises:
+        HTTPException: If file not found or invalid parameters
+    """
+    try:
+        # Validate parameters
+        if not character_uuid or not character_uuid.strip():
+            logger.warning("Invalid character_uuid: empty string")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid character_uuid"
+            )
+
+        if voice_id < 0:
+            logger.warning("Invalid voice_id: %d", voice_id)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid voice_id"
+            )
+
+        if sample_number not in (1, 2, 3):
+            logger.warning("Invalid sample_number: %d", sample_number)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="sample_number must be 1, 2, or 3"
+            )
+
+        # Construct file path - go up to project root from backend/routers/tts.py
+        backend_dir = Path(__file__).parent.parent
+        project_root = backend_dir.parent
+        voicevox_path = project_root / "voicevox" / "windows-directml" / "resources" / "character_info" / character_uuid / "voice_samples"
+        
+        # Format: 110_001.wav, 111_002.wav, etc.
+        voice_file = voicevox_path / f"{voice_id}_{sample_number:03d}.wav"
+
+        logger.debug(
+            "Voice sample request | UUID: %s | Voice ID: %d | Sample: %d | Full Path: %s",
+            character_uuid,
+            voice_id,
+            sample_number,
+            voice_file.absolute()
+        )
+
+        # Verify file exists
+        if not voice_file.exists():
+            logger.warning(
+                "Voice sample file not found | Path: %s | Voice ID: %d | Sample: %d",
+                voice_file.absolute(),
+                voice_id,
+                sample_number
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Voice sample not found: {voice_id}_{sample_number:03d}.wav at {voice_file}"
+            )
+
+        # Verify it's actually a WAV file
+        if voice_file.suffix.lower() != '.wav':
+            logger.warning(
+                "Invalid file type | Path: %s | Extension: %s",
+                voice_file,
+                voice_file.suffix
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File is not a WAV audio file"
+            )
+
+        # Read file into memory
+        logger.debug("Reading voice sample file | Size: %d bytes", voice_file.stat().st_size)
+        file_data = voice_file.read_bytes()
+
+        if not file_data:
+            logger.error("Voice sample file is empty | Path: %s", voice_file)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Voice sample file is empty"
+            )
+
+        logger.debug("Successfully read voice sample | Voice ID: %d | Sample: %d | Size: %d bytes", voice_id, sample_number, len(file_data))
+
+        # Return as streaming response with proper headers
+        return StreamingResponse(
+            iter([file_data]),
+            media_type="audio/wav",
+            headers={
+                "Cache-Control": "public, max-age=86400",
+                "Content-Disposition": f"inline; filename=voice_sample_{voice_id}_{sample_number:03d}.wav",
+                "Content-Length": str(len(file_data)),
+                "Accept-Ranges": "bytes",
+            }
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(
+            "Error serving voice sample: %s | Exception: %s",
+            str(e),
+            type(e).__name__,
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving voice sample: {str(e)}"
+        )

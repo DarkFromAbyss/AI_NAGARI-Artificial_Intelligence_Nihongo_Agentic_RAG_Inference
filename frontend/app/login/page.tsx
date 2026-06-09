@@ -47,12 +47,30 @@ export default function LoginPage() {
         return;
       }
 
-      // Persist session + basic user identity so header can update immediately after redirect
+      // Persist session + complete user identity so chat interface can identify the user
       localStorage.setItem('session_token', data.session_token);
       const displayName = data?.user?.full_name || data?.user?.username || 'Guest';
       const emailValue = data?.user?.email || '';
+      const userId = data?.user?.id ? String(data.user.id) : '';
+      
+      console.log('[Login Success] Storing user data:', {
+        userId: userId,
+        displayName: displayName,
+        email: emailValue,
+        backendResponse: data?.user
+      });
+      
       localStorage.setItem('user_display_name', displayName);
       localStorage.setItem('user_email', emailValue);
+      localStorage.setItem('user_id', userId);
+      
+      // Verify data was stored
+      console.log('[Login Verify] Data in localStorage:', {
+        stored_user_id: localStorage.getItem('user_id'),
+        stored_display_name: localStorage.getItem('user_display_name'),
+        stored_email: localStorage.getItem('user_email'),
+        stored_session: localStorage.getItem('session_token') ? 'YES' : 'NO'
+      });
 
       // Immediate redirect on success
       router.push('/');
