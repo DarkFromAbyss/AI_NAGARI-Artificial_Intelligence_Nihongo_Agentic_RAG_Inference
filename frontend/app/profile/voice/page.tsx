@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Sidebar } from '@/components/sidebar';
 import { useRouter } from 'next/navigation';
 import styles from '@/styles/voice-profiles.module.css';
@@ -10,13 +10,23 @@ interface VoiceSample {
   path: string;
 }
 
+interface VoiceStyle {
+  voiceId: number;
+  portraitUrl: string;
+  styleName: string;
+  characterName: string;
+}
+
 interface Character {
   folder: string;
   name: string;
   portrait: string;
   voiceSamples: VoiceSample[];
   description: string;
+  styles: VoiceStyle[];
 }
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000';
 
 export default function VoiceProfilesPage() {
   const router = useRouter();
@@ -25,6 +35,12 @@ export default function VoiceProfilesPage() {
   const [voiceFeatureEnabled, setVoiceFeatureEnabled] = useState(true);
   const [selectedCharacterFolder, setSelectedCharacterFolder] = useState<string | null>(null);
   const [playingSample, setPlayingSample] = useState<string | null>(null);
+
+  /** The voice_id the user has actively selected (persisted to backend). */
+  const [selectedVoiceId, setSelectedVoiceId] = useState<number | null>(null);
+  /** Which voice_id button is currently mid-save (shows a spinner). */
+  const [savingVoiceId, setSavingVoiceId] = useState<number | null>(null);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -51,23 +67,16 @@ export default function VoiceProfilesPage() {
     };
   }, []);
 
-  const selectedCharacter = characters.find((character) => character.folder === selectedCharacterFolder) ?? characters[0] ?? null;
+  const selectedCharacter =
+    characters.find((c) => c.folder === selectedCharacterFolder) ?? characters[0] ?? null;
 
-  const handleVoiceToggle = () => {
-    setVoiceFeatureEnabled(!voiceFeatureEnabled);
-  };
+  const handleVoiceToggle = () => setVoiceFeatureEnabled((v) => !v);
 
-  const handleCharacterSelect = (folder: string) => {
-    setSelectedCharacterFolder(folder);
-  };
+  const handleCharacterSelect = (folder: string) => setSelectedCharacterFolder(folder);
 
-  const handleVoiceClick = () => {
-    // Already on the voice profiles page.
-  };
+  const handleVoiceClick = () => { /* already on the voice profiles page */ };
 
-  const handleLogoClick = () => {
-    router.push('/');
-  };
+  const handleLogoClick = () => router.push('/');
 
   const stopPlayback = () => {
     if (audioRef.current) {
@@ -79,36 +88,57 @@ export default function VoiceProfilesPage() {
   };
 
   const handlePlaySample = async (sample: VoiceSample) => {
-    if (!voiceFeatureEnabled) {
-      return;
-    }
-
+    if (!voiceFeatureEnabled) return;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
-
     const audio = new Audio(sample.path);
     audioRef.current = audio;
-
-    audio.onended = () => {
-      setPlayingSample(null);
-      audioRef.current = null;
-    };
-
-    audio.onerror = (error) => {
-      console.error('Failed to play voice sample:', error);
-      setPlayingSample(null);
-    };
-
+    audio.onended = () => { setPlayingSample(null); audioRef.current = null; };
+    audio.onerror = () => { setPlayingSample(null); };
     try {
       await audio.play();
       setPlayingSample(sample.name);
-    } catch (error) {
-      console.error('Audio playback error:', error);
+    } catch {
       setPlayingSample(null);
     }
   };
+
+  /**
+   * Sends the user's style choice to the backend.
+   * Uses an optimistic UI update — the button highlights immediately,
+   * and if the request fails the selection is rolled back.
+   */
+  const handleStyleSelect = useCallback(async (voiceId: number) => {
+    const previous = selectedVoiceId;
+    setSelectedVoiceId(voiceId);
+    setSavingVoiceId(voiceId);
+    try {
+      const token =
+        localStorage.getItem('session_token') ??
+        sessionStorage.getItem('session_token') ?? '';
+      const res = await fetch(`${BACKEND_URL}/api/tts/voice-preference`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ voice_id: voiceId }),
+      });
+      if (!res.ok) {
+        console.error('[voice-preference] request failed:', res.status, await res.text());
+        // Roll back optimistic update on failure
+        setSelectedVoiceId(previous);
+      }
+    } catch (err) {
+      console.error('[voice-preference] network error:', err);
+      setSelectedVoiceId(previous);
+    } finally {
+      setSavingVoiceId(null);
+    }
+  }, [selectedVoiceId]);
+
 
   return (
     <div className={styles.voiceProfilesContainer}>
@@ -119,6 +149,7 @@ export default function VoiceProfilesPage() {
       />
 
       <main className={styles.contentArea}>
+        {/* ── Header ── */}
         <div className={styles.header}>
           <div>
             <h1 className={styles.title}>Voice Profiles</h1>
@@ -130,6 +161,7 @@ export default function VoiceProfilesPage() {
           </div>
         </div>
 
+        {/* ── Voice toggle ── */}
         <section className={styles.toggleSection}>
           <div className={styles.toggleHeader}>
             <span className={styles.toggleLabel}>Voice Feature</span>
@@ -146,7 +178,10 @@ export default function VoiceProfilesPage() {
           </div>
         </section>
 
+        {/* ── Main two-column panel ── */}
         <section className={styles.mainPanel}>
+
+          {/* Left: character list */}
           <div className={styles.characterPanel}>
             <div className={styles.panelHeader}>
               <div>
@@ -158,7 +193,7 @@ export default function VoiceProfilesPage() {
 
             <div className={styles.characterGrid}>
               {loading ? (
-                <div className={styles.loadingCard}>Loading voice characters...</div>
+                <div className={styles.loadingCard}>Loading voice characters…</div>
               ) : (
                 characters.map((character) => {
                   const isSelected = character.folder === selectedCharacterFolder;
@@ -183,8 +218,10 @@ export default function VoiceProfilesPage() {
             </div>
           </div>
 
+          {/* Right: voice detail panel */}
           <aside className={styles.voiceDetailPanel}>
             <div className={styles.detailHeader}>
+              {/* Hero portrait */}
               <div className={styles.heroPortrait}>
                 {selectedCharacter ? (
                   <img src={selectedCharacter.portrait} alt={`${selectedCharacter.name} portrait`} />
@@ -194,6 +231,7 @@ export default function VoiceProfilesPage() {
                 <div className={styles.voiceBadge}>{voiceFeatureEnabled ? 'Voice ON' : 'Voice OFF'}</div>
               </div>
 
+              {/* Character info */}
               <div className={styles.characterInfo}>
                 <span className={styles.characterLabel}>Selected voice</span>
                 <h2 className={styles.characterName}>{selectedCharacter?.name ?? 'No selection'}</h2>
@@ -202,11 +240,63 @@ export default function VoiceProfilesPage() {
                 </p>
               </div>
             </div>
+            
+              {/* ── Style selector buttons ── */}
+            {selectedCharacter && selectedCharacter.styles.length > 0 && (
+              <div className={styles.stylesSection}>
+                <div className={styles.stylesSectionHeader}>
+                  <span className={styles.stylesSectionTitle}>Voice Styles</span>
+                  <span className={styles.stylesSectionHint}>
+                    {selectedVoiceId != null
+                      ? `ID ${selectedVoiceId} selected`
+                      : 'Pick a style to activate it'}
+                  </span>
+                </div>
+                <div className={styles.stylesGrid}>
+                  {selectedCharacter.styles.map((style) => {
+                    const isActive = style.voiceId === selectedVoiceId;
+                    const isSaving = style.voiceId === savingVoiceId;
+                    return (
+                      <button
+                        key={style.voiceId}
+                        id={`style-btn-${style.voiceId}`}
+                        className={[
+                          styles.styleButton,
+                          isActive ? styles.styleButtonActive : '',
+                          isSaving ? styles.styleButtonSaving : '',
+                        ].join(' ')}
+                        onClick={() => handleStyleSelect(style.voiceId)}
+                        disabled={isSaving}
+                        aria-label={`Select style ${style.styleName} (ID ${style.voiceId})`}
+                        aria-pressed={isActive}
+                        title={`${style.characterName} — ${style.styleName} (ID: ${style.voiceId})`}
+                      >
+                        <div className={styles.styleThumb}>
+                          <img
+                            src={style.portraitUrl}
+                            alt={`${style.characterName} ${style.styleName}`}
+                            loading="lazy"
+                          />
+                          {isSaving && <div className={styles.styleSavingOverlay}><span className={styles.spinnerRing} /></div>}
+                        </div>
+                        <span className={styles.styleLabel}>
+                          {isActive ? '✓ ' : ''}{style.styleName}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
+
+            {/* ── Playback controls ── */}
             <div className={styles.detailActions}>
               <button
                 className={`${styles.actionButton} ${styles.primaryAction}`}
-                onClick={() => selectedCharacter?.voiceSamples[0] && handlePlaySample(selectedCharacter.voiceSamples[0])}
+                onClick={() =>
+                  selectedCharacter?.voiceSamples[0] && handlePlaySample(selectedCharacter.voiceSamples[0])
+                }
                 disabled={!selectedCharacter || !voiceFeatureEnabled || !selectedCharacter?.voiceSamples.length}
               >
                 Play first sample
@@ -220,6 +310,7 @@ export default function VoiceProfilesPage() {
               </button>
             </div>
 
+            {/* ── Sample library ── */}
             <div className={styles.samplePanel}>
               <div className={styles.samplePanelHeader}>
                 <h3>Voice Sample Library</h3>

@@ -4,9 +4,10 @@ Provides REST API for real-time text-to-speech synthesis using Voicevox engine.
 Returns audio streams for direct playback on the frontend.
 """
 
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, status, Request, Header
 from fastapi.responses import StreamingResponse, FileResponse
 import io
+import sqlite3
 from typing import Optional
 from pydantic import BaseModel, Field
 from pathlib import Path
@@ -14,6 +15,64 @@ from core.logger import get_logger
 from tts.voicevox_service import VoicevoxTTSService
 
 logger = get_logger(__name__)
+
+# Database path — go up from backend/routers/ to project root
+_DB_PATH = Path(__file__).parent.parent.parent / "database" / "ai_naragi.db"
+
+
+def _get_user_id_from_session(authorization: str) -> int:
+    """Resolve a Bearer session token to a user_id.
+
+    Args:
+        authorization: Value of the Authorization header ("Bearer <token>")
+
+    Returns:
+        Validated user_id integer
+
+    Raises:
+        HTTPException 401: Token missing, malformed, expired, or inactive
+    """
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format",
+        )
+    token = parts[1]
+
+    try:
+        conn = sqlite3.connect(_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT user_id, is_active
+            FROM sessions
+            WHERE session_token = ?
+            """,
+            (token,),
+        )
+        session = cursor.fetchone()
+        conn.close()
+    except Exception as db_err:
+        logger.error("[TTS] DB error resolving session: %s", db_err, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while validating session",
+        )
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token",
+        )
+    if not session["is_active"]:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session is inactive",
+        )
+
+    return int(session["user_id"])
 
 # Create router for TTS endpoints
 router = APIRouter(prefix="/api/tts", tags=["tts"])
@@ -214,6 +273,158 @@ async def get_tts_health(req: Request) -> dict:
             "engine_ready": False,
             "message": str(e)
         }
+
+
+class VoicePreferenceRequest(BaseModel):
+    """Request body for setting a user's preferred Voicevox speaker."""
+
+    voice_id: int = Field(
+        ...,
+        ge=0,
+        description="Voicevox speaker_id to assign to the authenticated user",
+    )
+
+    class Config:
+        json_schema_extra = {"example": {"voice_id": 3001}}
+
+
+@router.post(
+    "/voice-preference",
+    summary="Set user voice preference",
+    description=(
+        "Save the authenticated user's preferred Voicevox speaker_id. "
+        "The session token in the Authorization header is used to identify the user. "
+        "Returns the resolved user_id and the saved voice_id."
+    ),
+    responses={
+        200: {"description": "Preference saved — returns user_id and voice_id"},
+        401: {"description": "Unauthorized — invalid or missing session token"},
+        500: {"description": "Database or unexpected error"},
+    },
+)
+async def post_voice_preference(
+    request_data: VoicePreferenceRequest,
+    authorization: str = Header(...),
+) -> dict:
+    """
+    Persist a user's preferred Voicevox speaker_id.
+
+    Resolves the Bearer token from the Authorization header to a user_id,
+    then performs an UPSERT into the user_voiceid table so each user always
+    has exactly one saved preference.  Returns the user_id and voice_id so
+    the frontend can confirm the identity of the user who made the change.
+
+    Args:
+        request_data: VoicePreferenceRequest containing the desired voice_id
+        authorization: Authorization header value ("Bearer <token>")
+
+    Returns:
+        dict with keys: user_id, voice_id, message
+
+    Raises:
+        HTTPException 401: Invalid/missing/inactive session
+        HTTPException 500: Database error
+    """
+    try:
+        user_id = _get_user_id_from_session(authorization)
+        voice_id = request_data.voice_id
+
+        logger.info(
+            "[TTS] Voice preference update | user_id=%d | voice_id=%d",
+            user_id,
+            voice_id,
+        )
+
+        conn = sqlite3.connect(_DB_PATH)
+        try:
+            conn.execute(
+                """
+                INSERT INTO user_voiceid (user_id, voice_id)
+                VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    voice_id = excluded.voice_id,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, voice_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        logger.info(
+            "[TTS] Voice preference saved | user_id=%d | voice_id=%d",
+            user_id,
+            voice_id,
+        )
+
+        return {
+            "user_id": user_id,
+            "voice_id": voice_id,
+            "message": "Voice preference updated successfully",
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(
+            "[TTS] Unexpected error saving voice preference: %s",
+            str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while saving voice preference",
+        )
+
+
+@router.get(
+    "/voice-preference",
+    summary="Get user voice preference",
+    description="Retrieve the authenticated user's preferred voice_id",
+    responses={
+        200: {"description": "Returns user_id and voice_id if preference exists"},
+        401: {"description": "Unauthorized"},
+        500: {"description": "Database error"},
+    },
+)
+async def get_voice_preference(
+    authorization: str = Header(...),
+) -> dict:
+    """
+    Retrieve the authenticated user's saved Voicevox speaker_id preference.
+    """
+    try:
+        user_id = _get_user_id_from_session(authorization)
+        conn = sqlite3.connect(_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT voice_id FROM user_voiceid WHERE user_id = ?",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        finally:
+            conn.close()
+
+        if not row:
+            return {"user_id": user_id, "voice_id": None}
+
+        return {"user_id": user_id, "voice_id": row["voice_id"]}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "[TTS] Unexpected error retrieving voice preference: %s",
+            str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while retrieving voice preference",
+        )
 
 
 @router.get(

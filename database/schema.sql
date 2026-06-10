@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS character_voice(
 CREATE TABLE IF NOT EXISTS user_voiceid (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL UNIQUE,
-    voice_id INTEGER NOT NULL UNIQUE,
+    voice_id INTEGER NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -94,5 +94,5 @@ CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token);
 CREATE INDEX IF NOT EXISTS idx_activity_log_user_id ON activity_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log(created_at);
 
-CREATE INDEX IF NOT EXISTS idx_user_voice_id_user_id ON UserVoiceID(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_voice_id_voice_id ON UserVoiceID(voice_id);
+CREATE INDEX IF NOT EXISTS idx_user_voice_id_user_id ON user_voiceid(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_voice_id_voice_id ON user_voiceid(voice_id);
