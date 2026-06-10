@@ -1,7 +1,7 @@
 .voiceProfilesContainer {
   display: flex;
   width: 100%;
-  height: 100vh;
+  min-height: 100vh;
   background-color: var(--background);
 }
 
@@ -16,22 +16,57 @@
 
 /* Header Section */
 .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
   padding: 2rem;
   border-bottom: 1px solid var(--border);
   background-color: var(--card);
 }
 
 .title {
-  font-size: 2rem;
-  font-weight: 700;
-  margin: 0 0 0.5rem 0;
+  font-size: clamp(2rem, 2.5vw, 2.75rem);
+  font-weight: 800;
+  margin: 0;
   color: var(--foreground);
+  letter-spacing: -0.04em;
 }
 
 .subtitle {
-  font-size: 0.875rem;
+  font-size: 0.95rem;
   color: var(--muted-foreground);
-  margin: 0;
+  margin: 0.75rem 0 0;
+  max-width: 46rem;
+}
+
+.voiceStatusCard {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 1.5rem;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.08), rgba(255, 255, 255, 0.4));
+  min-width: 160px;
+}
+
+.statusLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted-foreground);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 0.95rem;
+  border-radius: 999px;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 700;
 }
 
 /* Toggle Section */
@@ -45,7 +80,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 500px;
+  max-width: 540px;
+  gap: 1rem;
 }
 
 .toggleLabel {
@@ -82,7 +118,7 @@
 
 .toggleSwitch.toggleActive {
   background-color: var(--primary);
-  box-shadow: 0 0 20px rgba(124, 58, 237, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 24px rgba(124, 58, 237, 0.35), inset 0 2px 4px rgba(0, 0, 0, 0.12);
 }
 
 .toggleKnob {
@@ -95,7 +131,7 @@
   top: 50%;
   transform: translateY(-50%);
   transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .toggleSwitch.toggleActive .toggleKnob {
@@ -109,156 +145,350 @@
   min-width: 40px;
 }
 
-/* Character Section */
-.characterSection {
+.mainPanel {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(380px, 1.5fr);
+  gap: 1.5rem;
   padding: 2rem;
-  flex: 1;
 }
 
-.sectionTitle {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0 0 1.5rem 0;
-  color: var(--foreground);
-}
-
-.tableContainer {
-  background-color: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  overflow: hidden;
-}
-
-.characterTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9375rem;
-}
-
-.characterTable thead {
-  background-color: var(--secondary);
-  border-bottom: 2px solid var(--border);
-}
-
-.characterTable thead th {
-  padding: 1rem;
-  text-align: left;
-  font-weight: 600;
-  color: var(--foreground);
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.tableRow {
-  border-bottom: 1px solid var(--border);
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.tableRow:hover {
-  background-color: var(--secondary);
-}
-
-.tableRow.rowActive {
-  background-color: var(--primary);
-  color: var(--primary-foreground);
-  box-shadow: inset 0 0 20px rgba(124, 58, 237, 0.2);
-}
-
-.tableRow.rowActive .tableCell {
-  color: var(--primary-foreground);
-}
-
-.tableCell {
-  padding: 1rem;
-  color: var(--foreground);
-  transition: color 0.2s ease;
-  vertical-align: middle;
-}
-
-.iconContainer {
+.characterPanel,
+.voiceDetailPanel {
   display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sectionLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted-foreground);
+}
+
+.panelTitle {
+  margin: 0.35rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.countBadge {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 60px;
-  height: 60px;
+  padding: 0.65rem 0.85rem;
+  border-radius: 999px;
+  background-color: rgba(124, 58, 237, 0.12);
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
-.characterIcon {
-  max-width: 100%;
-  max-height: 100%;
-  border-radius: 0.375rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  object-fit: contain;
+.characterGrid {
+  display: grid;
+  gap: 1rem;
 }
 
-.description {
-  font-size: 0.875rem;
+.loadingCard {
+  padding: 2rem;
+  border-radius: 1.25rem;
+  background: var(--secondary);
   color: var(--muted-foreground);
   font-style: italic;
 }
 
-.tableRow.rowActive .description {
-  color: var(--primary-foreground);
-  opacity: 0.9;
-}
-
-.playButton {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  background-color: var(--secondary);
-  color: var(--foreground);
-  border-radius: 0.375rem;
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  display: flex;
+.characterCard {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
   align-items: center;
-  gap: 0.25rem;
+  width: 100%;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  text-align: left;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
-.playButton:hover {
+.characterCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(124, 58, 237, 0.35);
+  box-shadow: 0 20px 42px rgba(124, 58, 237, 0.08);
+}
+
+.characterCardActive {
+  border-color: var(--primary);
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.avatarThumb {
+  width: 70px;
+  height: 70px;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+
+.avatarThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.characterMeta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.characterNameSmall {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.characterDetails {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+
+.voiceCountBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.voiceDetailPanel {
+  padding: 2rem;
+  border-radius: 1.75rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.72));
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  box-shadow: 0 30px 90px rgba(124, 58, 237, 0.08);
+  min-height: 540px;
+}
+
+.detailHeader {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.heroPortrait {
+  width: min(100%, 240px);
+  aspect-ratio: 1 / 1.05;
+  border-radius: 1.75rem;
+  overflow: hidden;
+  position: relative;
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.12), rgba(255, 255, 255, 0.3));
+  box-shadow: 0 24px 60px rgba(124, 58, 237, 0.12);
+}
+
+.heroPortrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.emptyPortrait {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+  font-size: 0.95rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.voiceBadge {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(124, 58, 237, 0.16);
+}
+
+.characterInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.characterLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+
+.characterName {
+  margin: 0;
+  font-size: clamp(2rem, 2.4vw, 2.3rem);
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--foreground);
+}
+
+.characterDescription {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--foreground);
+  opacity: 0.88;
+  max-width: 44rem;
+  line-height: 1.7;
+}
+
+.detailActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.actionButton {
+  padding: 0.95rem 1.3rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.primaryAction {
   background-color: var(--primary);
   color: var(--primary-foreground);
-  border-color: var(--primary);
-  box-shadow: 0 0 10px rgba(124, 58, 237, 0.2);
+  box-shadow: 0 16px 36px rgba(124, 58, 237, 0.22);
 }
 
-.playButton:active {
-  transform: scale(0.95);
-}
-
-.loadingCell {
-  padding: 2rem;
-  text-align: center;
-  color: var(--muted-foreground);
-  font-style: italic;
-}
-
-.selectButton {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--border);
+.secondaryAction {
   background-color: var(--background);
   color: var(--foreground);
-  border-radius: 0.375rem;
+  border-color: var(--border);
+}
+
+.actionButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.samplePanel {
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 1.35rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.samplePanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.samplePanel h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.sampleHint {
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+}
+
+.sampleList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.sampleItem {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: var(--card);
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+}
+
+.sampleItemActive {
+  border-color: var(--primary);
+  background: rgba(124, 58, 237, 0.06);
+}
+
+.sampleItemName {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.sampleMeta {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted-foreground);
+}
+
+.playSampleButton {
+  min-width: 98px;
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border);
+  background-color: var(--secondary);
+  color: var(--foreground);
+  font-weight: 700;
   cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
   transition: all 0.2s ease;
 }
 
-.selectButton:hover {
-  background-color: var(--secondary);
-  border-color: var(--primary);
-}
-
-.selectButton.selectButtonActive {
+.playSampleButton:hover {
   background-color: var(--primary);
   color: var(--primary-foreground);
   border-color: var(--primary);
-  box-shadow: 0 0 15px rgba(124, 58, 237, 0.3);
+}
+
+.emptySampleState {
+  padding: 1.5rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--muted-foreground);
+  text-align: center;
 }
 
 .disabledMessage {
@@ -291,17 +521,26 @@
 }
 
 /* Responsive Design */
+@media (max-width: 1024px) {
+  .mainPanel {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
   .header {
     padding: 1.5rem;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .title {
-    font-size: 1.5rem;
+    font-size: 1.75rem;
   }
 
   .toggleSection,
-  .characterSection {
+  .voiceDetailPanel,
+  .characterPanel {
     padding: 1.5rem;
   }
 
@@ -311,33 +550,17 @@
     gap: 1rem;
   }
 
-  .characterTable thead th {
-    font-size: 0.75rem;
-    padding: 0.75rem;
+  .characterCard {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
   }
 
-  .tableCell {
-    padding: 0.75rem;
-    font-size: 0.875rem;
+  .panelHeader,
+  .detailHeader {
+    grid-template-columns: 1fr;
   }
 
-  .selectButton {
-    padding: 0.375rem 0.75rem;
-    font-size: 0.75rem;
-  }
-
-  .iconContainer {
-    width: 50px;
-    height: 50px;
-  }
-
-  .playButton {
-    padding: 0.375rem 0.5rem;
-    font-size: 0.75rem;
-  }
-
-  .description {
-    font-size: 0.75rem;
-    display: none;
+  .heroPortrait {
+    width: 100%;
   }
 }

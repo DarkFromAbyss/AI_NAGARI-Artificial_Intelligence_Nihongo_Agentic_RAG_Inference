@@ -249,7 +249,7 @@ export function Sidebar({ className, isModelActive = false, onModelToggle, isVoi
   return (
     <aside
       className={cn(
-        "flex flex-col h-full bg-sidebar transition-all duration-300 ease-in-out border-r border-sidebar-border",
+        "flex flex-col min-h-screen justify-between bg-sidebar transition-all duration-300 ease-in-out border-r border-sidebar-border",
         isExpanded ? "w-[250px]" : "w-[80px]",
         className
       )}

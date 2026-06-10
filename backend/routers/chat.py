@@ -136,7 +136,7 @@ async def post_chat_message(request: ChatMessageRequest, req: Request) -> ChatMe
             session_id=session_id,
             user_text=request.message,
             user_id=request.user_id,
-            language="vi",
+            language=request.language,
             metadata={
                 "message_id": message_id,
                 "source": "frontend",

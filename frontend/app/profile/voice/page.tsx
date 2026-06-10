@@ -1,16 +1,20 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar } from '@/components/sidebar';
 import { useRouter } from 'next/navigation';
 import styles from '@/styles/voice-profiles.module.css';
 
-interface Character {
-  id: number;
+interface VoiceSample {
   name: string;
-  uuid: string;
-  iconPath: string;
-  sampleVoicePath: string;
+  path: string;
+}
+
+interface Character {
+  folder: string;
+  name: string;
+  portrait: string;
+  voiceSamples: VoiceSample[];
   description: string;
 }
 
@@ -18,63 +22,114 @@ export default function VoiceProfilesPage() {
   const router = useRouter();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // Load character data from JSON
+  const [voiceFeatureEnabled, setVoiceFeatureEnabled] = useState(true);
+  const [selectedCharacterFolder, setSelectedCharacterFolder] = useState<string | null>(null);
+  const [playingSample, setPlayingSample] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
     const loadCharacters = async () => {
       try {
-        const response = await fetch('/data/voice-characters.json');
+        const response = await fetch('/api/voice-characters');
         const data = await response.json();
-        setCharacters(data.characters);
-        setLoading(false);
+        setCharacters(data.characters || []);
+        setSelectedCharacterFolder(data.characters?.[0]?.folder ?? null);
       } catch (error) {
         console.error('Failed to load character data:', error);
+      } finally {
         setLoading(false);
       }
     };
-    
+
     loadCharacters();
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
   }, []);
 
-  // State Management
-  const [voiceFeatureEnabled, setVoiceFeatureEnabled] = useState(true);
-  const [selectedCharacterId, setSelectedCharacterId] = useState<number | null>(110);
+  const selectedCharacter = characters.find((character) => character.folder === selectedCharacterFolder) ?? characters[0] ?? null;
 
   const handleVoiceToggle = () => {
     setVoiceFeatureEnabled(!voiceFeatureEnabled);
   };
 
-  const handleCharacterSelect = (characterId: number) => {
-    setSelectedCharacterId(characterId);
+  const handleCharacterSelect = (folder: string) => {
+    setSelectedCharacterFolder(folder);
   };
 
   const handleVoiceClick = () => {
-    // Already on the voice profiles page, so do nothing or refresh
-    // This is mainly for when navigating from other pages
+    // Already on the voice profiles page.
   };
 
   const handleLogoClick = () => {
     router.push('/');
   };
 
+  const stopPlayback = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    setPlayingSample(null);
+  };
+
+  const handlePlaySample = async (sample: VoiceSample) => {
+    if (!voiceFeatureEnabled) {
+      return;
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    const audio = new Audio(sample.path);
+    audioRef.current = audio;
+
+    audio.onended = () => {
+      setPlayingSample(null);
+      audioRef.current = null;
+    };
+
+    audio.onerror = (error) => {
+      console.error('Failed to play voice sample:', error);
+      setPlayingSample(null);
+    };
+
+    try {
+      await audio.play();
+      setPlayingSample(sample.name);
+    } catch (error) {
+      console.error('Audio playback error:', error);
+      setPlayingSample(null);
+    }
+  };
+
   return (
     <div className={styles.voiceProfilesContainer}>
-      {/* Left Sidebar */}
-      <Sidebar 
+      <Sidebar
         isVoiceActive={true}
         onVoiceClick={handleVoiceClick}
         onLogoClick={handleLogoClick}
       />
 
-      {/* Right Content Area */}
       <main className={styles.contentArea}>
-        {/* Header */}
         <div className={styles.header}>
-          <h1 className={styles.title}>Voice Profiles</h1>
-          <p className={styles.subtitle}>Manage your voice settings and select a character voice</p>
+          <div>
+            <h1 className={styles.title}>Voice Profiles</h1>
+            <p className={styles.subtitle}>Craft a character-driven voice experience for AI Naragi.</p>
+          </div>
+          <div className={styles.voiceStatusCard}>
+            <span className={styles.statusLabel}>Voice Engine</span>
+            <span className={styles.statusBadge}>{voiceFeatureEnabled ? 'Active' : 'Disabled'}</span>
+          </div>
         </div>
 
-        {/* Voice Feature Toggle */}
         <section className={styles.toggleSection}>
           <div className={styles.toggleHeader}>
             <span className={styles.toggleLabel}>Voice Feature</span>
@@ -86,136 +141,119 @@ export default function VoiceProfilesPage() {
               >
                 <span className={styles.toggleKnob} />
               </button>
-              <span className={styles.toggleStatus}>
-                {voiceFeatureEnabled ? 'ON' : 'OFF'}
-              </span>
+              <span className={styles.toggleStatus}>{voiceFeatureEnabled ? 'ON' : 'OFF'}</span>
             </div>
           </div>
         </section>
 
-        {/* Character Selection Table */}
-        <section className={styles.characterSection}>
-          <h2 className={styles.sectionTitle}>Select a Character Voice</h2>
-          
-          {voiceFeatureEnabled ? (
-            <div className={styles.tableContainer}>
-              <table className={styles.characterTable}>
-                <thead>
-                  <tr>
-                    <th>Icon</th>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Description</th>
-                    <th>Sample</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className={styles.loadingCell}>
-                        Loading character data...
-                      </td>
-                    </tr>
-                  ) : characters.length > 0 ? (
-                    characters.map((character) => (
-                      <tr
-                        key={character.id}
-                        className={`${styles.tableRow} ${
-                          selectedCharacterId === character.id ? styles.rowActive : ''
-                        }`}
-                        onClick={() => handleCharacterSelect(character.id)}
+        <section className={styles.mainPanel}>
+          <div className={styles.characterPanel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <p className={styles.sectionLabel}>Characters</p>
+                <h2 className={styles.panelTitle}>Available Voice Profiles</h2>
+              </div>
+              <span className={styles.countBadge}>{characters.length} characters</span>
+            </div>
+
+            <div className={styles.characterGrid}>
+              {loading ? (
+                <div className={styles.loadingCard}>Loading voice characters...</div>
+              ) : (
+                characters.map((character) => {
+                  const isSelected = character.folder === selectedCharacterFolder;
+                  return (
+                    <button
+                      key={character.folder}
+                      className={`${styles.characterCard} ${isSelected ? styles.characterCardActive : ''}`}
+                      onClick={() => handleCharacterSelect(character.folder)}
+                    >
+                      <div className={styles.avatarThumb}>
+                        <img src={character.portrait} alt={`${character.name} portrait`} />
+                      </div>
+                      <div className={styles.characterMeta}>
+                        <div className={styles.characterNameSmall}>{character.name}</div>
+                        <p className={styles.characterDetails}>{character.description}</p>
+                      </div>
+                      <span className={styles.voiceCountBadge}>{character.voiceSamples.length} samples</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <aside className={styles.voiceDetailPanel}>
+            <div className={styles.detailHeader}>
+              <div className={styles.heroPortrait}>
+                {selectedCharacter ? (
+                  <img src={selectedCharacter.portrait} alt={`${selectedCharacter.name} portrait`} />
+                ) : (
+                  <div className={styles.emptyPortrait}>No character selected</div>
+                )}
+                <div className={styles.voiceBadge}>{voiceFeatureEnabled ? 'Voice ON' : 'Voice OFF'}</div>
+              </div>
+
+              <div className={styles.characterInfo}>
+                <span className={styles.characterLabel}>Selected voice</span>
+                <h2 className={styles.characterName}>{selectedCharacter?.name ?? 'No selection'}</h2>
+                <p className={styles.characterDescription}>
+                  {selectedCharacter?.description ?? 'Choose a character on the left to preview their voice samples.'}
+                </p>
+              </div>
+            </div>
+
+            <div className={styles.detailActions}>
+              <button
+                className={`${styles.actionButton} ${styles.primaryAction}`}
+                onClick={() => selectedCharacter?.voiceSamples[0] && handlePlaySample(selectedCharacter.voiceSamples[0])}
+                disabled={!selectedCharacter || !voiceFeatureEnabled || !selectedCharacter?.voiceSamples.length}
+              >
+                Play first sample
+              </button>
+              <button
+                className={`${styles.actionButton} ${styles.secondaryAction}`}
+                onClick={stopPlayback}
+                disabled={!playingSample}
+              >
+                Stop playback
+              </button>
+            </div>
+
+            <div className={styles.samplePanel}>
+              <div className={styles.samplePanelHeader}>
+                <h3>Voice Sample Library</h3>
+                <span className={styles.sampleHint}>Tap a sample to hear the character.</span>
+              </div>
+
+              <div className={styles.sampleList}>
+                {selectedCharacter?.voiceSamples.length ? (
+                  selectedCharacter.voiceSamples.map((sample) => (
+                    <div
+                      key={sample.name}
+                      className={`${styles.sampleItem} ${playingSample === sample.name ? styles.sampleItemActive : ''}`}
+                    >
+                      <div>
+                        <p className={styles.sampleItemName}>{sample.name}</p>
+                        <p className={styles.sampleMeta}>Voice sample file</p>
+                      </div>
+                      <button
+                        className={styles.playSampleButton}
+                        type="button"
+                        onClick={() => handlePlaySample(sample)}
                       >
-                        <td className={styles.tableCell}>
-                          <div className={styles.iconContainer}>
-                            <img
-                              src={character.iconPath}
-                              alt={character.name}
-                              className={styles.characterIcon}
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
-                          </div>
-                        </td>
-                        <td className={styles.tableCell}>{character.id}</td>
-                        <td className={styles.tableCell}>
-                          <strong>{character.name}</strong>
-                        </td>
-                        <td className={styles.tableCell}>
-                          <span className={styles.description}>{character.description}</span>
-                        </td>
-                        <td className={styles.tableCell}>
-                          <button
-                            className={styles.playButton}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Use backend API to stream voice sample
-                              const sampleUrl = `/api/tts/voice-sample/${character.uuid}/${character.id}/1`;
-                              const audio = new Audio();
-                              
-                              // Set up event listeners before setting src
-                              audio.oncanplay = () => {
-                                console.log(`Playing voice sample for ${character.name} (ID: ${character.id})`);
-                              };
-                              
-                              audio.onplaying = () => {
-                                console.log(`Now playing: ${character.name}`);
-                              };
-                              
-                              audio.onerror = (error) => {
-                                const errorMsg = audio.error ? audio.error.message : String(error);
-                                console.error(`Failed to play voice sample for ${character.name}:`, errorMsg);
-                                console.error('URL attempted:', sampleUrl);
-                                console.error('Audio error code:', audio.error?.code);
-                                alert(`Failed to play voice sample: ${errorMsg}`);
-                              };
-                              
-                              audio.onended = () => {
-                                console.log(`Finished playing: ${character.name}`);
-                              };
-                              
-                              // Set the source and attempt to play
-                              audio.src = sampleUrl;
-                              audio.type = "audio/wav";
-                              
-                              audio.play().catch((error) => {
-                                console.error(`Error playing audio for ${character.name}:`, error.message);
-                                alert(`Error playing audio: ${error.message}`);
-                              });
-                            }}
-                            title="Play voice sample"
-                          >
-                            ▶ Play
-                          </button>
-                        </td>
-                        <td className={styles.tableCell}>
-                          <button
-                            className={`${styles.selectButton} ${
-                              selectedCharacterId === character.id ? styles.selectButtonActive : ''
-                            }`}
-                            onClick={() => handleCharacterSelect(character.id)}
-                          >
-                            {selectedCharacterId === character.id ? 'Selected' : 'Select'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className={styles.loadingCell}>
-                        No characters available
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                        {playingSample === sample.name ? 'Playing' : 'Play'}
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className={styles.emptySampleState}>
+                    No voice samples found for this character.
+                  </div>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className={styles.disabledMessage}>
-              <p>Voice feature is currently disabled. Enable it above to select a character.</p>
-            </div>
-          )}
+          </aside>
         </section>
       </main>
     </div>

@@ -64,9 +64,35 @@ CREATE TABLE IF NOT EXISTS activity_log (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS character_voice(
+    voice_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    character_ja TEXT NOT NULL UNIQUE,
+    character_en TEXT NOT NULL UNIQUE,
+    style TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+);
+
+CREATE TABLE IF NOT EXISTS user_voiceid (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    voice_id INTEGER NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+
+
+
+
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token);
 CREATE INDEX IF NOT EXISTS idx_activity_log_user_id ON activity_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_user_voice_id_user_id ON UserVoiceID(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_voice_id_voice_id ON UserVoiceID(voice_id);

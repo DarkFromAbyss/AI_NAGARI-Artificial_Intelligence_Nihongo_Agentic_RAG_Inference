@@ -111,8 +111,6 @@ CRITICAL INSTRUCTIONS:
         system_prompt = f"""
 {self.intro_content}
 
-{self.context_content}
-
 {self.rules_content}
 
 {xml_output_enforcer}
@@ -123,7 +121,6 @@ CRITICAL INSTRUCTIONS:
         """Return prompt statistics for monitoring."""
         return {
             "intro_chars": len(self.intro_content),
-            "context_chars": len(self.context_content),
             "rules_chars": len(self.rules_content),
             "total_chars": (len(self.intro_content) + 
                           len(self.context_content) + 
