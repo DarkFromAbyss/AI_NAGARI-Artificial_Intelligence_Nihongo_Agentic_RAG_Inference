@@ -150,7 +150,7 @@ class VoicevoxTTSService:
         
         # Try to construct voicevox path from common location
         self.voicevox_engine_path = Path(
-            r"voicevox\windows-directml\run.exe"
+            r"C:\Users\PC\Desktop\AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference\voicevox\windows-directml\run.exe"
         )
         self.logger.debug("Using default Voicevox TTS configuration")
     

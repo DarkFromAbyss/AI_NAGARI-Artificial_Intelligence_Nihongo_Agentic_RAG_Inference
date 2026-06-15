@@ -6,11 +6,13 @@ Orchestrates LangGraph agent, semantic cache, and tool handling.
 
 import os
 import time
+import torch
 from dotenv import load_dotenv
 from typing import Optional, Union, List, Dict, Any
 from datetime import datetime
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, BitsAndBytesConfig
+from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
 from langchain_core.messages import HumanMessage, SystemMessage, trim_messages
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -130,13 +132,45 @@ class SenseiAgent:
         # Get LLM configuration from config.yaml
         llm_model = self.config_loader.get_parameter_safe("llm.model_name", "gemini-2.5-flash-lite")
         llm_temperature = self.config_loader.get_parameter_safe("llm.temperature", 0.7)
-        
-        self.llm = ChatGoogleGenerativeAI(
-            model=llm_model,
-            api_key=api_key,
-            temperature=llm_temperature
-        )
-        logger.info("Google Gemini LLM initialized with model: %s", llm_model)
+        model_dir = r"C:\Users\PC\Desktop\AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference\models\Qwen2.5-14B-Instruct"  # Example local path for HuggingFace model
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+            
+            # Khởi tạo cấu hình Quantization 8-bit bằng bitsandbytes
+            quantization_config = BitsAndBytesConfig(
+                load_in_8bit=True,
+                llm_int8_threshold=6.0,  # Ngưỡng phân tách các outlier features để giữ độ chính xác
+                llm_int8_skip_modules=None
+            )
+            
+            # Tải mô hình với cấu hình 8-bit tự động tối ưu thiết bị
+            model = AutoModelForCausalLM.from_pretrained(
+                model_dir,
+                quantization_config=quantization_config,
+                device_map="auto",
+                torch_dtype=torch.float16,# Tự động map các layers vào VRAM khả dụng
+                trust_remote_code=True
+            )
+            
+            # Khởi tạo Pipeline text-generation của HuggingFace
+            hf_pipe = pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                max_length=None,
+                max_new_tokens=1024,
+                temperature=self.config_loader.get_parameter_safe("llm.temperature", 0.3),
+                top_p=0.9,
+                redo_detector=None
+            )
+            
+            llm_backend = HuggingFacePipeline(pipeline=hf_pipe)
+            self.llm = ChatHuggingFace(llm=llm_backend)
+            
+        except Exception as e:
+            logger.critical("Failed to load Qwen3 8-bit model locally from %s. Error: %s", model_dir, e)
+            raise e
+        logger.info("Initialized with model: %s", llm_model)
         
         # Bind tools to LLM
         self.tools = [search_vocabulary, search_grammar, search_grammar_doc]
