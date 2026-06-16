@@ -132,9 +132,9 @@ class SenseiAgent:
         # Get LLM configuration from config.yaml
         llm_model = self.config_loader.get_parameter_safe("llm.model_name", "gemini-2.5-flash-lite")
         llm_temperature = self.config_loader.get_parameter_safe("llm.temperature", 0.7)
-        model_dir = r"C:\Users\PC\Desktop\AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference\models\Qwen2.5-14B-Instruct"  # Example local path for HuggingFace model
+        model_dir = r"C:\Users\ADMIN\Desktop\AI_NAGARI-Artificial_Intelligence_Nihongo_Agentic_RAG_Inference\models\Qwen2.5-14B-Instruct"  # Example local path for HuggingFace model
         try:
-            tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+            tokenizer = AutoTokenizer.from_pretrained(model_dir)
             
             # Khởi tạo cấu hình Quantization 8-bit bằng bitsandbytes
             quantization_config = BitsAndBytesConfig(

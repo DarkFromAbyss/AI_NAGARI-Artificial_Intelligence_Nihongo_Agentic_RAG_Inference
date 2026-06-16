@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"CORS enabled for origins: {settings.cors_origins}")
     
     # 1. KHỞI TẠO ĐỊNH TUYẾN RUNPOD CHO LLM CORE (MỚI)
-    runpod_url = os.getenv("RUNPOD_LLM_URL", "http://localhost:8000")
+    runpod_url = os.getenv("RUNPOD_LLM_URL", "http://localhost:8001")
     logger.info(f"🌐 Định tuyến LLM Core sang RunPod tại: {runpod_url}")
     
     app.state.runpod_url = runpod_url.rstrip("/")
