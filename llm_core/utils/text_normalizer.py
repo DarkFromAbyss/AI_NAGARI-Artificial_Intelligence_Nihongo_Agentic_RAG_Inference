@@ -92,3 +92,28 @@ def extract_dual_track(response_text: str) -> Tuple[str, str]:
                  len(display_text), len(voice_text))
     
     return display_text, voice_text
+
+
+def display_translator (display_text: str, 
+                        intent_text: str) -> str:
+    """Translate display text to Japanese for TTS synthesis.
+    
+    This is a placeholder function. In a real implementation, this would
+    call an external translation API or use a local model to perform the translation.
+    
+    Args:
+        display_text: The text extracted for display purposes
+        intent_text: The intent text for context
+    Returns:
+        Translated text suitable for TTS synthesis
+    """
+    
+    
+    # For demonstration, we'll just return the original text.
+    # Replace this with actual translation logic as needed.
+    if intent_text == "other": 
+        logger.debug("Intent is 'other', skipping translation for display text.")
+        
+        return display_text
+    
+    return display_text
